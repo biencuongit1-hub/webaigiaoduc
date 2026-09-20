@@ -11,7 +11,8 @@ import {
   ShieldCheck, 
   RotateCcw,
   ExternalLink,
-  Settings
+  Settings,
+  Sparkles
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 
@@ -151,8 +152,58 @@ export const FirebaseDeployGuide: React.FC = () => {
               firebase deploy --only hosting
             </pre>
             <p className="text-slate-500">
-              Hệ thống sẽ tải file lên Firebase Hosting và cấp cho bạn một tên miền miễn phí dạng: <code className="bg-slate-200 px-1 py-0.5 rounded font-mono">https://giao-vien-doi-moi-azota.web.app</code>!
+              Hệ thống sẽ tải file lên Firebase Hosting và cấp cho bạn một tên miền miễn phí dạng: <code className="bg-slate-200 px-1 py-0.5 rounded font-mono">https://giao-vien-thoi-dai-ai.web.app</code>!
             </p>
+          </div>
+        </div>
+
+        {/* Automated Deployment Section */}
+        <div className="pt-4 border-t border-slate-100 space-y-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-base font-bold text-slate-900">
+              Cách Deploy Tự Động 100% (Không cần gõ nhiều lệnh)
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Auto Script 1-Click */}
+            <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-indigo-950 text-xs">
+                  ⚡ Cách 1: Chạy Script Tự Động (1 Lệnh duy nhất)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard('bash deploy-auto.sh', 'auto1')}
+                  className="px-2 py-0.5 rounded-lg bg-white border border-indigo-200 hover:bg-indigo-100 font-bold text-indigo-700 text-[11px] flex items-center gap-1"
+                >
+                  {copiedCmd === 'auto1' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedCmd === 'auto1' ? 'Đã copy' : 'Copy'}</span>
+                </button>
+              </div>
+              <pre className="p-2.5 rounded-xl bg-slate-900 text-indigo-300 font-mono text-xs overflow-x-auto">
+                bash deploy-auto.sh
+              </pre>
+              <p className="text-slate-600 text-[11px]">
+                Script đã có sẵn trong dự án: tự động build mã nguồn và tự động deploy lên Firebase Hosting chỉ với 1 click. Trên Windows, thầy/cô có thể nhấp đúp file <code className="font-mono bg-white px-1 py-0.5 rounded">deploy-auto.bat</code>.
+              </p>
+            </div>
+
+            {/* GitHub Actions CI/CD */}
+            <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-purple-950 text-xs">
+                  🤖 Cách 2: Tự Động Hoàn Toàn Bằng GitHub Actions (CI/CD)
+                </span>
+                <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-1.5 py-0.5 rounded">
+                  Đã tạo workflow
+                </span>
+              </div>
+              <p className="text-slate-600 text-[11px]">
+                File <code className="font-mono bg-white px-1 py-0.5 rounded">.github/workflows/firebase-deploy.yml</code> đã được thiết lập sẵn. Mỗi khi thầy cô bấm Push / Commit lên GitHub, hệ thống GitHub Actions sẽ <strong>tự động build và deploy lên Firebase</strong> ngay lập tức!
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -188,7 +239,7 @@ export const FirebaseDeployGuide: React.FC = () => {
           <pre className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] overflow-x-auto">
 {`{
   "projects": {
-    "default": "giao-vien-doi-moi-azota"
+    "default": "giao-vien-thoi-dai-ai"
   }
 }`}
           </pre>
