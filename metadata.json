@@ -1,0 +1,6 @@
+{
+  "name": "Giáo viên thời đại AI - Hệ Thống Tạo Đề Thi & Học Liệu Số",
+  "description": "Nền tảng Giáo viên thời đại AI tích hợp hệ sinh thái bài giảng tương tác, trò chơi lớp học, trợ lý AI và công cụ tạo đề thi, phòng thi học sinh chuyên nghiệp sẵn sàng deploy Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
