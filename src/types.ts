@@ -1,5 +1,23 @@
 export type QuestionType = 'multiple_choice' | 'essay';
 
+export type UserRole = 'teacher' | 'student';
+
+export interface UserProfile {
+  id: string;
+  role: UserRole;
+  fullName: string;
+  grade: string; // 'Lớp 6' -> 'Lớp 12', hoặc 'Tất cả'
+  className: string; // e.g. '9A1', '12A2', hoặc bộ môn
+  school: string; // Trường học: e.g. 'THPT Chu Văn An'
+  birthYear: string; // Năm sinh: e.g. '2010', '1988'
+  email?: string;
+  phoneNumber?: string;
+  studentId?: string; // Mã học sinh / Số báo danh
+  subject?: string; // Môn giảng dạy chính (đối với Giáo viên)
+  avatarUrl?: string;
+  createdAt: string;
+}
+
 export interface QuestionOption {
   id: string;
   text: string;
@@ -40,7 +58,9 @@ export interface Exam {
   title: string;
   description?: string;
   subject: string;
-  grade: string;
+  grade: string; // Khối lớp chính: 'Lớp 6' -> 'Lớp 12', 'Tất cả các khối'
+  allowedGrades?: string[]; // Danh sách các khối được phép làm (e.g. ['Lớp 9'] hoặc ['Lớp 9', 'Lớp 10'] hoặc ['all'])
+  restrictToGrade?: boolean; // Bật giới hạn học sinh đúng khối lớp mới được làm
   durationMinutes: number;
   totalPoints: number;
   multipleChoicePoints?: number; // Điểm phần trắc nghiệm

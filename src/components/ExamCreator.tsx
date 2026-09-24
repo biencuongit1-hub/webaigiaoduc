@@ -48,6 +48,8 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
   const [subject, setSubject] = useState('Toán học');
   const [grade, setGrade] = useState('Lớp 9');
   const [targetClass, setTargetClass] = useState('9A1');
+  const [restrictToGrade, setRestrictToGrade] = useState<boolean>(true);
+  const [allowedGrades, setAllowedGrades] = useState<string[]>(['Lớp 9']);
   const [durationMinutes, setDurationMinutes] = useState(45);
   const [accessCode, setAccessCode] = useState(
     () => 'AI' + Math.floor(1000 + Math.random() * 9000)
@@ -403,6 +405,8 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
       description: description.trim(),
       subject,
       grade,
+      allowedGrades: restrictToGrade ? (allowedGrades.length > 0 ? allowedGrades : [grade]) : ['all'],
+      restrictToGrade,
       targetClass,
       durationMinutes: Number(durationMinutes) || 45,
       totalPoints,
@@ -537,11 +541,17 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Khối lớp
+              Khối lớp chính *
             </label>
             <select
               value={grade}
-              onChange={(e) => setGrade(e.target.value)}
+              onChange={(e) => {
+                const newG = e.target.value;
+                setGrade(newG);
+                if (!allowedGrades.includes(newG)) {
+                  setAllowedGrades([newG]);
+                }
+              }}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             >
               <option>Lớp 6</option>
@@ -551,6 +561,7 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
               <option>Lớp 10</option>
               <option>Lớp 11</option>
               <option>Lớp 12</option>
+              <option>Tất cả các khối</option>
             </select>
           </div>
 
@@ -565,6 +576,68 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
               placeholder="VD: 9A1, 9A2"
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             />
+          </div>
+
+          {/* Grade Restriction Setting */}
+          <div className="md:col-span-2 p-4 rounded-2xl bg-blue-50/60 border border-blue-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="w-5 h-5 text-blue-600" />
+                <div>
+                  <h4 className="font-bold text-slate-900 text-xs sm:text-sm">
+                    Giới hạn học sinh làm bài theo khối lớp
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Khi bật, chỉ học sinh đăng ký đúng khối lớp được chọn mới nhìn thấy và được phép vào thi đề này
+                  </p>
+                </div>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={restrictToGrade}
+                  onChange={(e) => setRestrictToGrade(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            {restrictToGrade && (
+              <div className="pt-2 border-t border-blue-200/60">
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Các khối lớp được phép làm bài này:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Lớp 6', 'Lớp 7', 'Lớp 8', 'Lớp 9', 'Lớp 10', 'Lớp 11', 'Lớp 12'].map((g) => {
+                    const isSelected = allowedGrades.includes(g) || grade === g;
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            // Don't uncheck the main grade
+                            if (g === grade) return;
+                            setAllowedGrades(allowedGrades.filter(x => x !== g));
+                          } else {
+                            setAllowedGrades([...allowedGrades, g]);
+                          }
+                        }}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:border-blue-300'
+                        }`}
+                      >
+                        {g} {g === grade && '(Chính)'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

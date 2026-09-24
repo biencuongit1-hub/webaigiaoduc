@@ -208,6 +208,46 @@ export const FirebaseDeployGuide: React.FC = () => {
         </div>
       </div>
 
+      {/* Vercel Deployment & Realtime Cloud Sync Section */}
+      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white space-y-5 border border-indigo-500/30 shadow-xl">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white text-slate-900 flex items-center justify-center font-black text-lg">
+              ▲
+            </div>
+            <div>
+              <h2 className="text-lg font-bold">Triển Khai Lên Vercel & Tự Động Đồng Bộ Realtime</h2>
+              <p className="text-xs text-indigo-200">
+                Tệp <code className="bg-white/10 px-1.5 py-0.5 rounded text-amber-300 font-mono">vercel.json</code> đã được tạo sẵn ở thư mục gốc để định tuyến SPA chuẩn xác!
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-xs font-bold flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            Đồng bộ 2 chiều tức thì
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+            <h3 className="font-bold text-amber-300 text-sm">1. Cơ chế đồng bộ đề thi lên Vercel</h3>
+            <p className="text-slate-300 leading-relaxed text-[11px]">
+              Khi giáo viên tải tệp Word/PDF lên hoặc bấm "Lưu & Xuất bản", đề thi được lưu ngay vào Firestore database chung. Giao diện chạy trên <strong>Vercel</strong> sử dụng trình lắng nghe sự kiện <code className="font-mono text-amber-300">onSnapshot</code> nên màn hình học sinh trên Vercel <strong>tự động nhận đề mới ngay lập tức</strong> mà không cần tải lại trang!
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+            <h3 className="font-bold text-emerald-300 text-sm">2. Cách deploy nhanh lên Vercel</h3>
+            <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px]">
+              <li>Đẩy mã nguồn dự án lên GitHub của thầy/cô.</li>
+              <li>Truy cập <code className="font-mono text-emerald-300">vercel.com</code> và bấm <strong>"Add New Project"</strong>.</li>
+              <li>Chọn kho GitHub này và bấm <strong>"Deploy"</strong>.</li>
+              <li>Vercel sẽ tự động build qua lệnh <code className="font-mono text-emerald-300">npm run build</code> và cấp tên miền miễn phí.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
       {/* File config inspection */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">

@@ -1,10 +1,12 @@
-import { Exam, ExamSubmission, FirebaseConfigState } from '../types';
+import { Exam, ExamSubmission, FirebaseConfigState, UserProfile } from '../types';
 import { 
   saveExamToFirestore, 
   deleteExamFromFirestore, 
   saveSubmissionToFirestore, 
   getExamsFromFirestore, 
   getSubmissionsFromFirestore,
+  saveUserProfileToFirestore,
+  getUserProfilesFromFirestore,
   testConnection 
 } from './firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -12,6 +14,61 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const EXAMS_STORAGE_KEY = 'gvdm_azota_exams_v1';
 const SUBMISSIONS_STORAGE_KEY = 'gvdm_azota_submissions_v1';
 const FIREBASE_CONFIG_KEY = 'gvdm_firebase_config_v1';
+const USER_PROFILE_STORAGE_KEY = 'gvdm_current_user_profile_v1';
+const USERS_LIST_STORAGE_KEY = 'gvdm_all_user_profiles_v1';
+
+export const INITIAL_SAMPLE_USERS: UserProfile[] = [
+  {
+    id: 'user_teacher_cuong',
+    role: 'teacher',
+    fullName: 'Thầy Nguyễn Biên Cương',
+    grade: 'Lớp 9',
+    className: 'Tổ Toán - Tin',
+    school: 'THCS & THPT Đoàn Thượng',
+    birthYear: '1988',
+    email: 'biencuong.it1@gmail.com',
+    phoneNumber: '0988123456',
+    subject: 'Toán học',
+    createdAt: new Date(Date.now() - 3600 * 24 * 10 * 1000).toISOString()
+  },
+  {
+    id: 'user_teacher_huong',
+    role: 'teacher',
+    fullName: 'Cô Trần Thị Thu Hương',
+    grade: 'Lớp 8',
+    className: 'Tổ Sử - Địa',
+    school: 'THCS Lê Quý Đôn',
+    birthYear: '1991',
+    email: 'thuhuong.su@gmail.com',
+    phoneNumber: '0977888999',
+    subject: 'Lịch sử & Địa lý',
+    createdAt: new Date(Date.now() - 3600 * 24 * 5 * 1000).toISOString()
+  },
+  {
+    id: 'user_student_an',
+    role: 'student',
+    fullName: 'Nguyễn Văn An',
+    grade: 'Lớp 9',
+    className: '9A1',
+    school: 'THCS & THPT Đoàn Thượng',
+    birthYear: '2010',
+    studentId: 'HS0901',
+    email: 'vanan.2010@gmail.com',
+    createdAt: new Date(Date.now() - 3600 * 24 * 3 * 1000).toISOString()
+  },
+  {
+    id: 'user_student_mai',
+    role: 'student',
+    fullName: 'Trần Thị Mai',
+    grade: 'Lớp 9',
+    className: '9A1',
+    school: 'THCS & THPT Đoàn Thượng',
+    birthYear: '2010',
+    studentId: 'HS0902',
+    email: 'thimai.9a1@gmail.com',
+    createdAt: new Date(Date.now() - 3600 * 24 * 2 * 1000).toISOString()
+  }
+];
 
 export const INITIAL_SAMPLE_EXAMS: Exam[] = [
   {
@@ -453,9 +510,75 @@ export const StorageService = {
   },
 
   /**
+   * User Profile & Account Management
+   */
+  getAllUsers(): UserProfile[] {
+    try {
+      const data = localStorage.getItem(USERS_LIST_STORAGE_KEY);
+      if (!data) {
+        localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_USERS));
+        INITIAL_SAMPLE_USERS.forEach(u => saveUserProfileToFirestore(u).catch(() => {}));
+        return INITIAL_SAMPLE_USERS;
+      }
+      return JSON.parse(data);
+    } catch {
+      return INITIAL_SAMPLE_USERS;
+    }
+  },
+
+  getCurrentUser(): UserProfile {
+    try {
+      const data = localStorage.getItem(USER_PROFILE_STORAGE_KEY);
+      if (data) {
+        return JSON.parse(data);
+      }
+      // Default to teacher account if not set
+      const defaultUser = INITIAL_SAMPLE_USERS[0];
+      localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(defaultUser));
+      return defaultUser;
+    } catch {
+      return INITIAL_SAMPLE_USERS[0];
+    }
+  },
+
+  setCurrentUser(user: UserProfile): void {
+    localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(user));
+    // Also ensure this user exists in all users list
+    const users = this.getAllUsers();
+    const idx = users.findIndex(u => u.id === user.id);
+    if (idx >= 0) {
+      users[idx] = user;
+    } else {
+      users.unshift(user);
+    }
+    localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(users));
+    saveUserProfileToFirestore(user).catch(() => {});
+  },
+
+  async registerUser(profile: UserProfile): Promise<void> {
+    const users = this.getAllUsers();
+    const idx = users.findIndex(u => u.id === profile.id || (u.email && u.email === profile.email));
+    if (idx >= 0) {
+      users[idx] = profile;
+    } else {
+      users.unshift(profile);
+    }
+    localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(users));
+    localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+
+    // Save to Firestore cloud database
+    try {
+      await saveUserProfileToFirestore(profile);
+      console.log(`[Firebase Auto-Deploy] Đã tạo tài khoản "${profile.fullName}" (${profile.role}) trên Firestore.`);
+    } catch (err) {
+      console.warn('[Firebase] Lưu tài khoản cục bộ:', err);
+    }
+  },
+
+  /**
    * Sync all local data with Firestore cloud database
    */
-  async syncWithCloud(): Promise<{ examCount: number; submissionCount: number }> {
+  async syncWithCloud(): Promise<{ examCount: number; submissionCount: number; userCount: number }> {
     try {
       await testConnection();
       const cloudExams = await getExamsFromFirestore();
@@ -492,15 +615,32 @@ export const StorageService = {
       const mergedSubs = Array.from(subMap.values());
       localStorage.setItem(SUBMISSIONS_STORAGE_KEY, JSON.stringify(mergedSubs));
 
+      // Users
+      const cloudUsers = await getUserProfilesFromFirestore();
+      const localUsers = this.getAllUsers();
+      const userMap = new Map<string, UserProfile>();
+      localUsers.forEach(u => userMap.set(u.id, u));
+      cloudUsers.forEach(u => userMap.set(u.id, u));
+
+      for (const u of localUsers) {
+        if (!cloudUsers.some(cu => cu.id === u.id)) {
+          await saveUserProfileToFirestore(u).catch(() => {});
+        }
+      }
+      const mergedUsers = Array.from(userMap.values());
+      localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(mergedUsers));
+
       return {
         examCount: mergedExams.length,
-        submissionCount: mergedSubs.length
+        submissionCount: mergedSubs.length,
+        userCount: mergedUsers.length
       };
     } catch (error) {
       console.warn('Sync with cloud completed with local cache:', error);
       return {
         examCount: this.getExams().length,
-        submissionCount: this.getSubmissions().length
+        submissionCount: this.getSubmissions().length,
+        userCount: this.getAllUsers().length
       };
     }
   },

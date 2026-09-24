@@ -39,6 +39,25 @@
         "status": { "type": "string" }
       },
       "required": ["id", "examId", "studentName", "studentClass", "score", "submittedAt", "status"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User accounts for teachers and students with school, grade, class, birth year",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "role": { "type": "string", "enum": ["teacher", "student"] },
+        "fullName": { "type": "string" },
+        "grade": { "type": "string" },
+        "className": { "type": "string" },
+        "school": { "type": "string" },
+        "birthYear": { "type": "string" },
+        "email": { "type": "string" },
+        "subject": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "role", "fullName", "school", "createdAt"]
     }
   },
   "firestore": {
@@ -49,6 +68,10 @@
     "/submissions/{submissionId}": {
       "schema": "ExamSubmission",
       "description": "Student submissions and teacher essay grading results"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Registered accounts for teachers and students"
     }
   }
 }

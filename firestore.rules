@@ -28,5 +28,14 @@ service cloud.firestore {
                             && request.resource.data.examId is string;
       allow delete: if true;
     }
+
+    // Registered user profiles for teachers and students
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.fullName is string
+                            && request.resource.data.fullName.size() > 0
+                            && request.resource.data.role is string;
+      allow delete: if true;
+    }
   }
 }

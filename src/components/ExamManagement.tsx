@@ -292,8 +292,21 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                 <div className="text-base font-bold">
                   {currentExam.title}
                 </div>
-                <div className="text-xs text-slate-300">
-                  Thời gian: {currentExam.durationMinutes} phút | Mã phòng thi: <strong className="text-amber-400 font-mono text-sm">{currentExam.accessCode}</strong>
+                <div className="text-xs text-slate-300 flex flex-wrap items-center gap-2 pt-1">
+                  <span>Thời gian: {currentExam.durationMinutes} phút</span>
+                  <span>|</span>
+                  <span>Mã phòng thi: <strong className="text-amber-400 font-mono text-sm">{currentExam.accessCode}</strong></span>
+                  <span>|</span>
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                    currentExam.restrictToGrade ? 'bg-amber-400 text-slate-900' : 'bg-blue-600 text-white'
+                  }`}>
+                    {currentExam.restrictToGrade ? `🔒 Giới hạn ${currentExam.grade}` : `🌐 Mọi khối lớp`}
+                  </span>
+                  {currentExam.targetClass && (
+                    <span className="bg-white/20 px-2 py-0.5 rounded text-[11px]">
+                      Lớp {currentExam.targetClass}
+                    </span>
+                  )}
                 </div>
               </div>
 

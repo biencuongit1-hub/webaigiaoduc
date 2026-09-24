@@ -14,7 +14,7 @@ import {
   orderBy
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Exam, ExamSubmission } from '../types';
+import { Exam, ExamSubmission, UserProfile } from '../types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -184,3 +184,58 @@ export function subscribeToSubmissions(examId: string | undefined, callback: (su
     }
   );
 }
+
+// User Profile operations (Teachers and Students)
+export async function saveUserProfileToFirestore(profile: UserProfile): Promise<void> {
+  const path = `users/${profile.id}`;
+  try {
+    await setDoc(doc(db, 'users', profile.id), profile, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function getUserProfileFromFirestore(userId: string): Promise<UserProfile | null> {
+  const path = `users/${userId}`;
+  try {
+    const snapshot = await getDoc(doc(db, 'users', userId));
+    if (snapshot.exists()) {
+      return snapshot.data() as UserProfile;
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
+export async function getUserProfilesFromFirestore(): Promise<UserProfile[]> {
+  const path = 'users';
+  try {
+    const snapshot = await getDocs(collection(db, path));
+    const list: UserProfile[] = [];
+    snapshot.forEach((d) => {
+      list.push(d.data() as UserProfile);
+    });
+    return list;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export function subscribeToUserProfiles(callback: (profiles: UserProfile[]) => void): () => void {
+  const path = 'users';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const profiles: UserProfile[] = [];
+      snapshot.forEach((d) => {
+        profiles.push(d.data() as UserProfile);
+      });
+      callback(profiles);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
+}
+

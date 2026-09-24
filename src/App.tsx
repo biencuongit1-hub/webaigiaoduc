@@ -3,43 +3,54 @@ import { Navbar } from './components/Navbar';
 import { HomeOverview } from './components/HomeOverview';
 import { ExamCreator } from './components/ExamCreator';
 import { StudentExamRoom } from './components/StudentExamRoom';
+import { StudentPortal } from './components/StudentPortal';
 import { ExamManagement } from './components/ExamManagement';
 import { InteractiveGames } from './components/InteractiveGames';
 import { Virtual360Space } from './components/Virtual360Space';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { FirebaseDeployGuide } from './components/FirebaseDeployGuide';
+import { UserAccountModal } from './components/UserAccountModal';
 import { StorageService } from './services/storage';
-import { testConnection, subscribeToExams, subscribeToSubmissions } from './services/firebase';
-import { Exam, ExamSubmission } from './types';
-import { Heart, Sparkles, CheckCircle2, Flame, RefreshCw } from 'lucide-react';
+import { testConnection, subscribeToExams, subscribeToSubmissions, subscribeToUserProfiles } from './services/firebase';
+import { Exam, ExamSubmission, UserProfile, UserRole } from './types';
+import { Heart, Sparkles, CheckCircle2, Flame, RefreshCw, UserCheck, Cloud } from 'lucide-react';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState('home');
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => StorageService.getCurrentUser());
+  const [userRole, setUserRole] = useState<UserRole>(() => currentUser.role || 'teacher');
+  const [currentTab, setCurrentTab] = useState<string>(() => userRole === 'student' ? 'student_portal' : 'home');
+
   const [exams, setExams] = useState<Exam[]>([]);
   const [submissions, setSubmissions] = useState<ExamSubmission[]>([]);
   const [activeExamForStudent, setActiveExamForStudent] = useState<Exam | null>(null);
   const [isCloudSynced, setIsCloudSynced] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string>('');
 
   // Load initial data from StorageService & setup Firestore sync
   useEffect(() => {
     const loadedExams = StorageService.getExams();
     const loadedSubs = StorageService.getSubmissions();
+    const loadedUser = StorageService.getCurrentUser();
     setExams(loadedExams);
     setSubmissions(loadedSubs);
+    setCurrentUser(loadedUser);
+    setUserRole(loadedUser.role);
 
     // Test connection and sync with Firestore cloud database
     testConnection().then(() => {
       setIsCloudSynced(true);
-      StorageService.syncWithCloud().then(({ examCount, submissionCount }) => {
-        console.log(`[Firebase Cloud] Đã đồng bộ ${examCount} đề thi và ${submissionCount} bài làm từ Firestore.`);
+      StorageService.syncWithCloud().then(({ examCount, submissionCount, userCount }) => {
+        console.log(`[Firebase Cloud] Đã đồng bộ ${examCount} đề thi, ${submissionCount} bài làm và ${userCount} tài khoản từ Firestore.`);
         setExams(StorageService.getExams());
         setSubmissions(StorageService.getSubmissions());
       }).catch(() => {});
     }).catch(() => {});
 
-    // Subscribe to Firestore real-time updates
+    // Subscribe to Firestore real-time updates (Exams, Submissions, User profiles)
     let unsubExams: (() => void) | undefined;
     let unsubSubs: (() => void) | undefined;
+    let unsubUsers: (() => void) | undefined;
     try {
       unsubExams = subscribeToExams((cloudExams) => {
         if (cloudExams && cloudExams.length > 0) {
@@ -51,8 +62,17 @@ export default function App() {
           setSubmissions(cloudSubs);
         }
       });
+      unsubUsers = subscribeToUserProfiles((cloudUsers) => {
+        if (cloudUsers && cloudUsers.length > 0) {
+          // Keep current user updated
+          const match = cloudUsers.find(u => u.id === currentUser.id);
+          if (match) {
+            setCurrentUser(match);
+          }
+        }
+      });
     } catch {
-      // Fallback
+      // Fallback to local
     }
 
     // Check URL params for direct exam join code (?code=XYZ)
@@ -66,11 +86,45 @@ export default function App() {
       }
     }
 
+    // Role param (?role=student or ?role=teacher)
+    const roleParam = params.get('role');
+    if (roleParam === 'student' || roleParam === 'teacher') {
+      setUserRole(roleParam);
+      setCurrentTab(roleParam === 'student' ? 'student_portal' : 'home');
+    }
+
     return () => {
       if (unsubExams) unsubExams();
       if (unsubSubs) unsubSubs();
+      if (unsubUsers) unsubUsers();
     };
   }, []);
+
+  // Handler: Change Role
+  const handleRoleChange = (newRole: UserRole) => {
+    setUserRole(newRole);
+    // If current user's role is different, update or offer to switch
+    const updated = { ...currentUser, role: newRole };
+    StorageService.setCurrentUser(updated);
+    setCurrentUser(updated);
+
+    if (newRole === 'student') {
+      setCurrentTab('student_portal');
+    } else {
+      setCurrentTab('home');
+    }
+  };
+
+  // Handler: User changes profile via modal
+  const handleUserChange = (newUser: UserProfile) => {
+    setCurrentUser(newUser);
+    setUserRole(newUser.role);
+    if (newUser.role === 'student') {
+      setCurrentTab('student_portal');
+    } else {
+      setCurrentTab('home');
+    }
+  };
 
   // Handler: Student joins exam by access code
   const handleJoinExamByCode = (code: string) => {
@@ -93,7 +147,7 @@ export default function App() {
     }
   };
 
-  // Handler: Save newly created exam
+  // Handler: Save newly created exam (Auto-sync to Cloud & Vercel)
   const handleSaveExam = async (newExam: Exam) => {
     await StorageService.saveExam(newExam);
     const updated = StorageService.getExams();
@@ -127,12 +181,20 @@ export default function App() {
             setActiveExamForStudent(null);
           }
         }}
+        userRole={userRole}
+        setUserRole={handleRoleChange}
+        currentUser={currentUser}
+        onOpenAccountModal={() => setIsAccountModalOpen(true)}
+        onOpenExamByCode={() => {
+          const code = prompt('Nhập mã đề thi (VD: TOAN9GK2 hoặc SUDIA8):');
+          if (code) handleJoinExamByCode(code);
+        }}
         examsCount={exams.length}
       />
 
       {/* Main Body Content Container */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        {/* Firebase Cloud Live Database Status Banner */}
+        {/* Firebase & Vercel Cloud Realtime Sync Banner */}
         <div className="mb-6 p-3.5 rounded-2xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-blue-500/10 border border-orange-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -141,15 +203,15 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-900">
-                  Firebase Cloud Firestore: Đã kích hoạt tự động đồng bộ
+                  Firebase Cloud Firestore & Vercel: Tự động đồng bộ đề thi và bài làm
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Đang hoạt động (Free Database)
+                  Realtime Active
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Mọi đề thi từ Word/PDF và bài làm học sinh đều tự động đồng bộ lên Database đám mây để học sinh làm bài từ mọi thiết bị.
+                Đề giáo viên úp lên từ Word/PDF hoặc AI tự động đồng bộ tức thì lên giao diện Vercel và thiết bị của học sinh theo thời gian thực.
               </p>
             </div>
           </div>
@@ -161,25 +223,53 @@ export default function App() {
                 const res = await StorageService.syncWithCloud();
                 setExams(StorageService.getExams());
                 setSubmissions(StorageService.getSubmissions());
-                alert(`Đồng bộ thành công! Hiện có ${res.examCount} đề thi và ${res.submissionCount} bài làm trên Cloud.`);
+                alert(`Đồng bộ thành công! Hiện có ${res.examCount} đề thi, ${res.submissionCount} bài làm và ${res.userCount} tài khoản trên Cloud.`);
               }}
               className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200 shadow-2xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
               <span>Đồng bộ ngay</span>
             </button>
+
             <button
               type="button"
-              onClick={() => setCurrentTab('create_exam')}
-              className="px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
+              onClick={() => setIsAccountModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold border border-blue-200 flex items-center gap-1.5 transition-all text-xs cursor-pointer"
             >
-              <span>+ Úp đề Word/PDF</span>
+              <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+              <span>Tạo / Đổi tài khoản</span>
             </button>
+
+            {userRole === 'teacher' && (
+              <button
+                type="button"
+                onClick={() => setCurrentTab('create_exam')}
+                className="px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
+              >
+                <span>+ Úp đề Word/PDF</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* VIEW: HOME OVERVIEW */}
-        {currentTab === 'home' && (
+        {/* ======================================================= */}
+        {/* CONDITIONAL PORTALS: TEACHER VS STUDENT                 */}
+        {/* ======================================================= */}
+
+        {/* VIEW: STUDENT PORTAL (LÀM BÀI, ÔN TẬP, LỊCH SỬ) */}
+        {(userRole === 'student' || currentTab === 'student_portal' || currentTab === 'student_study' || currentTab === 'student_history') && currentTab !== 'student_room' && (
+          <StudentPortal
+            currentUser={currentUser}
+            exams={exams}
+            submissions={submissions}
+            onSelectExam={handleSelectExamForStudent}
+            onJoinExamByCode={handleJoinExamByCode}
+            onOpenAccountModal={() => setIsAccountModalOpen(true)}
+          />
+        )}
+
+        {/* VIEW: TEACHER HOME OVERVIEW */}
+        {userRole === 'teacher' && currentTab === 'home' && (
           <HomeOverview
             exams={exams}
             onNavigateTab={setCurrentTab}
@@ -188,8 +278,8 @@ export default function App() {
           />
         )}
 
-        {/* VIEW: EXAM CREATOR (AZOTA STYLE) */}
-        {currentTab === 'create_exam' && (
+        {/* VIEW: EXAM CREATOR (AZOTA STYLE WITH GRADE RESTRICTION) */}
+        {userRole === 'teacher' && currentTab === 'create_exam' && (
           <ExamCreator
             onSaveExam={handleSaveExam}
             onCancel={() => setCurrentTab('home')}
@@ -197,7 +287,7 @@ export default function App() {
         )}
 
         {/* VIEW: EXAM MANAGEMENT & GRADEBOOK */}
-        {currentTab === 'manage_exams' && (
+        {userRole === 'teacher' && currentTab === 'manage_exams' && (
           <ExamManagement
             exams={exams}
             submissions={submissions}
@@ -210,15 +300,16 @@ export default function App() {
           />
         )}
 
-        {/* VIEW: STUDENT EXAM ROOM */}
+        {/* VIEW: STUDENT EXAM ROOM (ACTIVE TEST TAKING) */}
         {currentTab === 'student_room' && (
           activeExamForStudent ? (
             <StudentExamRoom
               exam={activeExamForStudent}
+              currentUser={currentUser}
               onFinishSubmission={handleFinishSubmission}
               onExitRoom={() => {
                 setActiveExamForStudent(null);
-                setCurrentTab('home');
+                setCurrentTab(userRole === 'student' ? 'student_portal' : 'home');
               }}
             />
           ) : (
@@ -229,10 +320,10 @@ export default function App() {
               </p>
               <button
                 type="button"
-                onClick={() => setCurrentTab('home')}
+                onClick={() => setCurrentTab(userRole === 'student' ? 'student_portal' : 'home')}
                 className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold"
               >
-                Quay lại trang chủ
+                Quay lại danh sách đề
               </button>
             </div>
           )
@@ -247,9 +338,17 @@ export default function App() {
         {/* VIEW: TEACHER AI ASSISTANT */}
         {currentTab === 'ai_assistant' && <AIAssistantModal />}
 
-        {/* VIEW: FIREBASE DEPLOYMENT GUIDE */}
+        {/* VIEW: FIREBASE & VERCEL DEPLOYMENT GUIDE */}
         {currentTab === 'firebase_deploy' && <FirebaseDeployGuide />}
       </main>
+
+      {/* Account Registration & Switch Modal */}
+      <UserAccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+        currentUser={currentUser}
+        onUserChange={handleUserChange}
+      />
 
       {/* Global Footer */}
       <footer className="mt-auto border-t border-slate-200/80 bg-white/80 backdrop-blur-xs py-8 px-4 text-center text-xs text-slate-500">
@@ -264,17 +363,25 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-1.5 text-slate-500">
-            <span>Đồng hành cùng hàng nghìn giáo viên Việt Nam đổi mới phương pháp dạy học</span>
+            <span>Đồng hành cùng hàng nghìn giáo viên & học sinh Việt Nam đổi mới giáo dục</span>
             <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 inline" />
           </div>
 
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setCurrentTab('firebase_deploy')}
-              className="text-orange-600 hover:text-orange-700 font-bold hover:underline"
+              onClick={() => setIsAccountModalOpen(true)}
+              className="text-blue-600 hover:text-blue-700 font-bold hover:underline cursor-pointer"
             >
-              Hướng dẫn Deploy Firebase
+              Tài khoản ({currentUser.fullName})
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => setCurrentTab('firebase_deploy')}
+              className="text-orange-600 hover:text-orange-700 font-bold hover:underline cursor-pointer"
+            >
+              Deploy Vercel & Firebase
             </button>
           </div>
         </div>

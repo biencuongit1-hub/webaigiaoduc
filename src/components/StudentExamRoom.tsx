@@ -21,16 +21,18 @@ import {
   HelpCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Exam, Question, ExamSubmission, ViolationLog } from '../types';
+import { Exam, Question, ExamSubmission, ViolationLog, UserProfile } from '../types';
 
 interface StudentExamRoomProps {
   exam: Exam;
+  currentUser?: UserProfile;
   onFinishSubmission: (submission: ExamSubmission) => void;
   onExitRoom: () => void;
 }
 
 export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
   exam,
+  currentUser,
   onFinishSubmission,
   onExitRoom
 }) => {
@@ -38,9 +40,9 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
   const [step, setStep] = useState<'lobby' | 'testing' | 'result'>('lobby');
 
   // Student Info
-  const [studentName, setStudentName] = useState('');
-  const [studentClass, setStudentClass] = useState(exam.targetClass || '');
-  const [studentId, setStudentId] = useState('');
+  const [studentName, setStudentName] = useState(currentUser?.fullName || '');
+  const [studentClass, setStudentClass] = useState(currentUser?.className || exam.targetClass || '');
+  const [studentId, setStudentId] = useState(currentUser?.studentId || '');
   const [inputPassword, setInputPassword] = useState('');
   const [authError, setAuthError] = useState('');
 

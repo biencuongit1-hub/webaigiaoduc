@@ -262,10 +262,7 @@ function parseSingleMultipleChoiceBlock(
   externalExplanation?: string
 ): Question | null {
   // Option Regex to extract A., B., C., D.
-  const optionRegex = new RegExp(
-    '(?:^|\\n)\\s*(\\*|\\[x\\])?\\s*([A-D])[.:\\)]\\s*([\\s\\S]*?)(?=(?:\\n\\s*(?:\\*|\\[x\\])?\\s*[A-D][.:\\)]|\\n\\s*(?:Lời\\s*giải|Hướng\\s*dẫn|Giải\\s*thích|Đáp\\s*án|HD:)|$)',
-    'gi'
-  );
+  const optionRegex = /(?:^|\n)\s*(\*|\[x\])?\s*([A-D])[.:\)]\s*([\s\S]*?)(?=(?:\n\s*(?:\*|\[x\])?\s*[A-D][.:\)]|\n\s*(?:Lời\s*giải|Hướng\s*dẫn|Giải\s*thích|Đáp\s*án|HD:)|\s*$))/gi;
 
   let questionText = '';
   const options: QuestionOption[] = [];
