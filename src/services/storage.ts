@@ -536,22 +536,27 @@ export const StorageService = {
     }
   },
 
-  getCurrentUser(): UserProfile {
+  getCurrentUser(): UserProfile | null {
     try {
       const data = localStorage.getItem(USER_PROFILE_STORAGE_KEY);
       if (data) {
         return JSON.parse(data);
       }
-      // Default to teacher account if not set
-      const defaultUser = INITIAL_SAMPLE_USERS[0];
-      localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(defaultUser));
-      return defaultUser;
+      return null;
     } catch {
-      return INITIAL_SAMPLE_USERS[0];
+      return null;
     }
   },
 
-  setCurrentUser(user: UserProfile): void {
+  logout(): void {
+    localStorage.removeItem(USER_PROFILE_STORAGE_KEY);
+  },
+
+  setCurrentUser(user: UserProfile | null): void {
+    if (!user) {
+      this.logout();
+      return;
+    }
     localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(user));
     // Also ensure this user exists in all users list
     const users = this.getAllUsers();
@@ -563,6 +568,25 @@ export const StorageService = {
     }
     localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(users));
     saveUserProfileToFirestore(user).catch(() => {});
+  },
+
+  async updateUserProfile(profile: UserProfile): Promise<void> {
+    const users = this.getAllUsers();
+    const idx = users.findIndex(u => u.id === profile.id);
+    if (idx >= 0) {
+      users[idx] = { ...users[idx], ...profile };
+    } else {
+      users.unshift(profile);
+    }
+    localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(users));
+    localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+
+    try {
+      await saveUserProfileToFirestore(profile);
+      console.log(`[Firebase] Đã cập nhật thông tin cá nhân "${profile.fullName}" trên Firestore.`);
+    } catch (err) {
+      console.warn('[Firebase] Lưu thông tin cục bộ:', err);
+    }
   },
 
   async registerUser(profile: UserProfile): Promise<void> {
@@ -643,7 +667,7 @@ export const StorageService = {
 
     // If current user, update current user too
     const current = this.getCurrentUser();
-    if (current.id === userId) {
+    if (current && current.id === userId) {
       current.password = newPassword;
       localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(current));
     }

@@ -15,7 +15,12 @@ import {
   User,
   School,
   Building,
-  RefreshCw
+  RefreshCw,
+  LogOut,
+  LogIn,
+  Edit3,
+  UserCheck,
+  Lock
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 
@@ -24,8 +29,9 @@ export interface NavbarProps {
   onSelectTab: (tab: string) => void;
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
-  currentUser: UserProfile;
-  onOpenAccountModal: () => void;
+  currentUser: UserProfile | null;
+  onOpenAccountModal: (tab?: 'register' | 'login' | 'forgot_password' | 'switch' | 'profile' | 'edit_profile') => void;
+  onLogout?: () => void;
   onOpenExamByCode?: () => void;
   examsCount?: number;
 }
@@ -37,30 +43,52 @@ export const Navbar: React.FC<NavbarProps> = ({
   setUserRole,
   currentUser,
   onOpenAccountModal,
+  onLogout,
   onOpenExamByCode,
   examsCount = 0
 }) => {
   const isTeacher = userRole === 'teacher';
+  const isLoggedIn = currentUser !== null;
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-      {/* Top announcement bar with Vercel & Firebase status */}
+      {/* Top announcement bar */}
       <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white text-xs py-1.5 px-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="bg-amber-400 text-slate-900 font-bold px-2 py-0.5 rounded text-[10px] tracking-wide uppercase">
-              Hệ Sinh Thái AI 4.0
+              Hệ Thống Giáo Dục 4.0
             </span>
             <span className="font-medium truncate">
-              {isTeacher
-                ? 'Chế độ Giáo viên: Soạn đề Word/PDF, phân quyền khối lớp & chấm thi tự động'
-                : `Chế độ Học sinh: Góc học tập & làm bài thi theo khối (${currentUser.grade} - ${currentUser.school})`}
+              {isLoggedIn ? (
+                isTeacher
+                  ? `Giáo viên: ${currentUser.fullName} (${currentUser.school})`
+                  : `Học sinh: ${currentUser.fullName} (${currentUser.grade} - ${currentUser.school})`
+              ) : (
+                'Chỉ khi đăng nhập mới thấy và sử dụng các chức năng theo người dùng'
+              )}
             </span>
           </div>
-          <div className="hidden sm:flex items-center gap-3 text-blue-100">
-            <span className="flex items-center gap-1.5 text-[11px]">
+
+          <div className="flex items-center gap-3 text-blue-100">
+            {/* Realtime Login status indicator */}
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+              {isLoggedIn ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Đã đăng nhập</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span>Chưa đăng nhập</span>
+                </span>
+              )}
+            </div>
+
+            <span className="hidden sm:flex items-center gap-1 text-[11px]">
               <Cloud className="w-3.5 h-3.5 text-emerald-300" />
-              <span>Đồng bộ Realtime Vercel & Firebase Cloud</span>
+              <span>Đồng bộ Cloud</span>
             </span>
           </div>
         </div>
@@ -69,7 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Main Navbar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo & Platform Name */}
+          {/* Logo */}
           <div 
             id="nav-logo"
             onClick={() => onSelectTab(isTeacher ? 'home' : 'student_portal')}
@@ -92,356 +120,409 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ? 'bg-amber-100 text-amber-800 border-amber-300' 
                     : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                 }`}>
-                  {isTeacher ? 'Giáo Viên' : currentUser.grade}
+                  {isTeacher ? 'Giáo Viên' : (currentUser?.grade || 'Học Sinh')}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 hidden sm:block">
-                {isTeacher 
-                  ? 'Hệ sinh thái dạy học thông minh & Quản lý khảo thí' 
-                  : `${currentUser.school} • Lớp ${currentUser.className}`}
+                {currentUser 
+                  ? `${currentUser.school} • ${currentUser.className}`
+                  : 'Hệ thống khảo thí & học liệu số thông minh'}
               </p>
             </div>
           </div>
 
-          {/* Desktop Navigation Links - CONDITIONAL BASED ON ROLE */}
-          <nav className="hidden lg:flex items-center gap-1">
-            {isTeacher ? (
-              /* TEACHER MENUS */
-              <>
-                <button
-                  id="tab-home"
-                  onClick={() => onSelectTab('home')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                    currentTab === 'home'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  Trang chủ
-                </button>
+          {/* Desktop Navigation Links - ONLY VISIBLE WHEN LOGGED IN */}
+          {isLoggedIn ? (
+            <nav className="hidden lg:flex items-center gap-1">
+              {isTeacher ? (
+                /* TEACHER MENUS */
+                <>
+                  <button
+                    id="tab-home"
+                    onClick={() => onSelectTab('home')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                      currentTab === 'home'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    Trang chủ
+                  </button>
 
-                <button
-                  id="tab-exam-creator"
-                  onClick={() => onSelectTab('create_exam')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'create_exam'
-                      ? 'bg-blue-600 text-white shadow-xs font-bold'
-                      : 'text-slate-700 hover:text-blue-700 hover:bg-blue-50'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Tạo đề thi AI
-                </button>
+                  <button
+                    id="tab-exam-creator"
+                    onClick={() => onSelectTab('create_exam')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'create_exam'
+                        ? 'bg-blue-600 text-white shadow-xs font-bold'
+                        : 'text-slate-700 hover:text-blue-700 hover:bg-blue-50'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Tạo đề thi AI
+                  </button>
 
-                <button
-                  id="tab-exam-management"
-                  onClick={() => onSelectTab('manage_exams')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'manage_exams'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  Quản lý & Điểm số
-                </button>
+                  <button
+                    id="tab-exam-management"
+                    onClick={() => onSelectTab('manage_exams')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'manage_exams'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Quản lý & Điểm số
+                  </button>
 
-                <button
-                  id="tab-ai-assistant"
-                  onClick={() => onSelectTab('ai_assistant')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'ai_assistant'
-                      ? 'bg-amber-50 text-amber-700 font-bold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <Bot className="w-4 h-4 text-amber-600" />
-                  Trợ lý AI
-                </button>
+                  <button
+                    id="tab-ai-assistant"
+                    onClick={() => onSelectTab('ai_assistant')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'ai_assistant'
+                        ? 'bg-amber-50 text-amber-700 font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Bot className="w-4 h-4 text-amber-600" />
+                    Trợ lý AI
+                  </button>
 
-                <button
-                  id="tab-games"
-                  onClick={() => onSelectTab('games')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'games'
-                      ? 'bg-purple-50 text-purple-700 font-bold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <Gamepad2 className="w-4 h-4" />
-                  Game lớp học
-                </button>
+                  <button
+                    id="tab-games"
+                    onClick={() => onSelectTab('games')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'games'
+                        ? 'bg-purple-50 text-purple-700 font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Gamepad2 className="w-4 h-4" />
+                    Game lớp học
+                  </button>
 
-                <button
-                  id="tab-360"
-                  onClick={() => onSelectTab('vr360')}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'vr360'
-                      ? 'bg-indigo-50 text-indigo-700 font-bold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <Compass className="w-4 h-4" />
-                  Bài giảng 360°
-                </button>
-              </>
-            ) : (
-              /* STUDENT MENUS - CLEAN & FOCUSED ON LEARNING */
-              <>
-                <button
-                  id="tab-student-portal"
-                  onClick={() => onSelectTab('student_portal')}
-                  className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'student_portal'
-                      ? 'bg-emerald-600 text-white shadow-xs font-bold'
-                      : 'text-slate-700 hover:text-emerald-700 hover:bg-emerald-50'
-                  }`}
-                >
-                  <GraduationCap className="w-4 h-4" />
-                  Làm bài thi ({currentUser.grade})
-                </button>
+                  <button
+                    id="tab-360"
+                    onClick={() => onSelectTab('vr360')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'vr360'
+                        ? 'bg-indigo-50 text-indigo-700 font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Compass className="w-4 h-4" />
+                    Bài giảng 360°
+                  </button>
+                </>
+              ) : (
+                /* STUDENT MENUS */
+                <>
+                  <button
+                    id="tab-student-portal"
+                    onClick={() => onSelectTab('student_portal')}
+                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'student_portal'
+                        ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                        : 'text-slate-700 hover:text-emerald-700 hover:bg-emerald-50'
+                    }`}
+                  >
+                    <GraduationCap className="w-4 h-4" />
+                    Làm bài thi ({currentUser.grade})
+                  </button>
 
-                <button
-                  id="tab-student-study"
-                  onClick={() => onSelectTab('student_study')}
-                  className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'student_study'
-                      ? 'bg-blue-600 text-white shadow-xs font-bold'
-                      : 'text-slate-700 hover:text-blue-700 hover:bg-blue-50'
-                  }`}
-                >
-                  <BookOpen className="w-4 h-4" />
-                  Góc học tập & Ôn luyện
-                </button>
+                  <button
+                    id="tab-student-study"
+                    onClick={() => onSelectTab('student_study')}
+                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'student_study'
+                        ? 'bg-blue-600 text-white shadow-xs font-bold'
+                        : 'text-slate-700 hover:text-blue-700 hover:bg-blue-50'
+                    }`}
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    Góc học tập & Ôn luyện
+                  </button>
 
-                <button
-                  id="tab-student-history"
-                  onClick={() => onSelectTab('student_history')}
-                  className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'student_history'
-                      ? 'bg-amber-600 text-white shadow-xs font-bold'
-                      : 'text-slate-700 hover:text-amber-700 hover:bg-amber-50'
-                  }`}
-                >
-                  <Award className="w-4 h-4" />
-                  Lịch sử & Điểm số
-                </button>
+                  <button
+                    id="tab-student-history"
+                    onClick={() => onSelectTab('student_history')}
+                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'student_history'
+                        ? 'bg-amber-600 text-white shadow-xs font-bold'
+                        : 'text-slate-700 hover:text-amber-700 hover:bg-amber-50'
+                    }`}
+                  >
+                    <Award className="w-4 h-4" />
+                    Lịch sử & Điểm số
+                  </button>
 
-                <button
-                  id="tab-student-games"
-                  onClick={() => onSelectTab('games')}
-                  className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'games'
-                      ? 'bg-purple-600 text-white shadow-xs font-bold'
-                      : 'text-slate-700 hover:text-purple-700 hover:bg-purple-50'
-                  }`}
-                >
-                  <Gamepad2 className="w-4 h-4" />
-                  Game học tập
-                </button>
+                  <button
+                    id="tab-student-games"
+                    onClick={() => onSelectTab('games')}
+                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'games'
+                        ? 'bg-purple-600 text-white shadow-xs font-bold'
+                        : 'text-slate-700 hover:text-purple-700 hover:bg-purple-50'
+                    }`}
+                  >
+                    <Gamepad2 className="w-4 h-4" />
+                    Game học tập
+                  </button>
 
-                <button
-                  id="tab-student-vr"
-                  onClick={() => onSelectTab('vr360')}
-                  className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentTab === 'vr360'
-                      ? 'bg-indigo-600 text-white shadow-xs font-bold'
-                      : 'text-slate-700 hover:text-indigo-700 hover:bg-indigo-50'
-                  }`}
-                >
-                  <Compass className="w-4 h-4" />
-                  Lớp học 360°
-                </button>
-              </>
-            )}
-          </nav>
+                  <button
+                    id="tab-student-vr"
+                    onClick={() => onSelectTab('vr360')}
+                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      currentTab === 'vr360'
+                        ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                        : 'text-slate-700 hover:text-indigo-700 hover:bg-indigo-50'
+                    }`}
+                  >
+                    <Compass className="w-4 h-4" />
+                    Lớp học 360°
+                  </button>
+                </>
+              )}
+            </nav>
+          ) : (
+            <div className="hidden lg:flex items-center gap-2 text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl">
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Chức năng sẽ mở sau khi đăng nhập tài khoản</span>
+            </div>
+          )}
 
           {/* Right Action buttons */}
           <div className="flex items-center gap-2">
-            {/* Quick Enter Code for Student */}
-            {onOpenExamByCode && (
-              <button
-                id="btn-quick-join"
-                onClick={onOpenExamByCode}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:border-emerald-400 hover:text-emerald-700 bg-white transition-colors cursor-pointer"
-              >
-                Nhập mã đề
-              </button>
+            {isLoggedIn ? (
+              <>
+                {/* Role switch toggle */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    id="role-teacher-btn"
+                    onClick={() => {
+                      setUserRole('teacher');
+                      onSelectTab('home');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isTeacher
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    👨‍🏫 Giáo viên
+                  </button>
+                  <button
+                    id="role-student-btn"
+                    onClick={() => {
+                      setUserRole('student');
+                      onSelectTab('student_portal');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      !isTeacher
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    🎓 Học sinh
+                  </button>
+                </div>
+
+                {/* Logged in User Profile Pill Button */}
+                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-2xl p-1 pr-2">
+                  <button
+                    type="button"
+                    onClick={() => onOpenAccountModal('profile')}
+                    title="Xem hồ sơ & đổi tài khoản"
+                    className="flex items-center gap-2 text-left cursor-pointer group"
+                  >
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-black shadow-xs ${
+                      isTeacher ? 'bg-blue-600' : 'bg-emerald-600'
+                    }`}>
+                      {currentUser.fullName.slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="hidden sm:block">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-bold text-slate-800 group-hover:text-blue-600 truncate max-w-[120px]">
+                          {currentUser.fullName}
+                        </span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Online" />
+                      </div>
+                      <span className="text-[10px] text-slate-400 block truncate max-w-[120px]">
+                        {currentUser.username ? `@${currentUser.username}` : currentUser.grade}
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* Edit profile shortcut */}
+                  <button
+                    type="button"
+                    onClick={() => onOpenAccountModal('edit_profile')}
+                    title="Chỉnh sửa thông tin cá nhân"
+                    className="w-7 h-7 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-blue-600 flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Logout button */}
+                  {onLogout && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('Bạn có chắc chắn muốn đăng xuất không?')) {
+                          onLogout();
+                        }
+                      }}
+                      title="Đăng xuất"
+                      className="w-7 h-7 rounded-lg hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* When NOT logged in */
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenAccountModal('login')}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Đăng Nhập</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenAccountModal('register')}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <span>+ Tạo tài khoản</span>
+                </button>
+              </div>
             )}
-
-            {/* Role switch toggle */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-              <button
-                id="role-teacher-btn"
-                onClick={() => {
-                  setUserRole('teacher');
-                  onSelectTab('home');
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  isTeacher
-                    ? 'bg-white text-blue-700 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                👨‍🏫 Giáo viên
-              </button>
-              <button
-                id="role-student-btn"
-                onClick={() => {
-                  setUserRole('student');
-                  onSelectTab('student_portal');
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  !isTeacher
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                🎓 Học sinh
-              </button>
-            </div>
-
-            {/* User Profile / Account Switch Button */}
-            <button
-              type="button"
-              onClick={onOpenAccountModal}
-              title="Quản lý tài khoản: Họ tên, Lớp, Khối, Trường, Năm sinh"
-              className="flex items-center gap-2 p-1.5 pr-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all cursor-pointer group"
-            >
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold ${
-                isTeacher ? 'bg-blue-600' : 'bg-emerald-600'
-              }`}>
-                {currentUser.fullName.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="text-left hidden md:block">
-                <div className="text-[11px] font-bold text-slate-800 leading-tight group-hover:text-blue-600">
-                  {currentUser.fullName}
-                </div>
-                <div className="text-[9px] text-slate-400 leading-tight">
-                  {currentUser.school ? currentUser.school.split(' ').slice(0, 3).join(' ') : currentUser.role}
-                </div>
-              </div>
-            </button>
 
             {/* Cloud Sync Button */}
             <button
               id="btn-nav-firebase"
               onClick={() => onSelectTab('firebase_deploy')}
               title="Đồng bộ Vercel & Firebase Cloud"
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+              className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
                 currentTab === 'firebase_deploy'
                   ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
                   : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
               }`}
             >
               <Flame className="w-4 h-4 text-orange-600" />
-              <span className="hidden sm:inline">Vercel & Cloud</span>
+              <span className="hidden md:inline">Cloud Sync</span>
             </button>
           </div>
         </div>
 
-        {/* Mobile Horizontal Tab Bar */}
-        <div className="lg:hidden flex items-center gap-1 py-2 overflow-x-auto border-t border-slate-100 scrollbar-none">
-          {isTeacher ? (
-            <>
-              <button
-                onClick={() => onSelectTab('home')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                  currentTab === 'home' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Trang chủ
-              </button>
-              <button
-                onClick={() => onSelectTab('create_exam')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
-                  currentTab === 'create_exam' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'
-                }`}
-              >
-                <Sparkles className="w-3 h-3" />
-                Tạo đề AI
-              </button>
-              <button
-                onClick={() => onSelectTab('manage_exams')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                  currentTab === 'manage_exams' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Quản lý đề
-              </button>
-              <button
-                onClick={() => onSelectTab('ai_assistant')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                  currentTab === 'ai_assistant' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700'
-                }`}
-              >
-                Trợ lý AI
-              </button>
-              <button
-                onClick={() => onSelectTab('games')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                  currentTab === 'games' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'
-                }`}
-              >
-                Game
-              </button>
-              <button
-                onClick={() => onSelectTab('vr360')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                  currentTab === 'vr360' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700'
-                }`}
-              >
-                360°
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => onSelectTab('student_portal')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
-                  currentTab === 'student_portal' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700'
-                }`}
-              >
-                <GraduationCap className="w-3 h-3" />
-                Làm bài thi
-              </button>
-              <button
-                onClick={() => onSelectTab('student_study')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
-                  currentTab === 'student_study' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'
-                }`}
-              >
-                <BookOpen className="w-3 h-3" />
-                Ôn luyện
-              </button>
-              <button
-                onClick={() => onSelectTab('student_history')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
-                  currentTab === 'student_history' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700'
-                }`}
-              >
-                <Award className="w-3 h-3" />
-                Lịch sử
-              </button>
-              <button
-                onClick={() => onSelectTab('games')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                  currentTab === 'games' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'
-                }`}
-              >
-                Game
-              </button>
-              <button
-                onClick={() => onSelectTab('vr360')}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                  currentTab === 'vr360' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700'
-                }`}
-              >
-                360°
-              </button>
-            </>
-          )}
-        </div>
+        {/* Mobile Tab Bar (Only when logged in) */}
+        {isLoggedIn && (
+          <div className="lg:hidden flex items-center gap-1 py-2 overflow-x-auto border-t border-slate-100 scrollbar-none">
+            {isTeacher ? (
+              <>
+                <button
+                  onClick={() => onSelectTab('home')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
+                    currentTab === 'home' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  Trang chủ
+                </button>
+                <button
+                  onClick={() => onSelectTab('create_exam')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
+                    currentTab === 'create_exam' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Tạo đề AI
+                </button>
+                <button
+                  onClick={() => onSelectTab('manage_exams')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
+                    currentTab === 'manage_exams' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  Quản lý đề
+                </button>
+                <button
+                  onClick={() => onSelectTab('ai_assistant')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
+                    currentTab === 'ai_assistant' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700'
+                  }`}
+                >
+                  Trợ lý AI
+                </button>
+                <button
+                  onClick={() => onSelectTab('games')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
+                    currentTab === 'games' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'
+                  }`}
+                >
+                  Game
+                </button>
+                <button
+                  onClick={() => onSelectTab('vr360')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
+                    currentTab === 'vr360' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700'
+                  }`}
+                >
+                  360°
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => onSelectTab('student_portal')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
+                    currentTab === 'student_portal' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  <GraduationCap className="w-3 h-3" />
+                  Làm bài thi
+                </button>
+                <button
+                  onClick={() => onSelectTab('student_study')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
+                    currentTab === 'student_study' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'
+                  }`}
+                >
+                  <BookOpen className="w-3 h-3" />
+                  Ôn luyện
+                </button>
+                <button
+                  onClick={() => onSelectTab('student_history')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
+                    currentTab === 'student_history' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700'
+                  }`}
+                >
+                  <Award className="w-3 h-3" />
+                  Lịch sử
+                </button>
+                <button
+                  onClick={() => onSelectTab('games')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
+                    currentTab === 'games' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'
+                  }`}
+                >
+                  Game
+                </button>
+                <button
+                  onClick={() => onSelectTab('vr360')}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
+                    currentTab === 'vr360' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700'
+                  }`}
+                >
+                  360°
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );
