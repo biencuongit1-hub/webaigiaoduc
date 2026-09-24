@@ -42,18 +42,21 @@
     },
     "UserProfile": {
       "title": "UserProfile",
-      "description": "User accounts for teachers and students with school, grade, class, birth year",
+      "description": "User accounts for teachers and students with school, grade, class, birth year, credentials",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "uid": { "type": "string" },
         "role": { "type": "string", "enum": ["teacher", "student"] },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
         "fullName": { "type": "string" },
         "grade": { "type": "string" },
         "className": { "type": "string" },
         "school": { "type": "string" },
         "birthYear": { "type": "string" },
         "email": { "type": "string" },
+        "phoneNumber": { "type": "string" },
         "subject": { "type": "string" },
         "createdAt": { "type": "string" }
       },

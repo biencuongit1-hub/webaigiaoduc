@@ -10,6 +10,7 @@ import { Virtual360Space } from './components/Virtual360Space';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { FirebaseDeployGuide } from './components/FirebaseDeployGuide';
 import { UserAccountModal } from './components/UserAccountModal';
+import { GradingNotificationToast, GradingNotification } from './components/GradingNotificationToast';
 import { StorageService } from './services/storage';
 import { testConnection, subscribeToExams, subscribeToSubmissions, subscribeToUserProfiles } from './services/firebase';
 import { Exam, ExamSubmission, UserProfile, UserRole } from './types';
@@ -26,6 +27,11 @@ export default function App() {
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string>('');
+
+  // Live Toast Notification for Graded Exam
+  const [liveNotification, setLiveNotification] = useState<GradingNotification | null>(null);
+  const prevGradedSubsRef = React.useRef<Set<string>>(new Set());
+  const initialLoadRef = React.useRef<boolean>(true);
 
   // Load initial data from StorageService & setup Firestore sync
   useEffect(() => {
@@ -99,6 +105,56 @@ export default function App() {
       if (unsubUsers) unsubUsers();
     };
   }, []);
+
+  // Listen for newly graded submissions in realtime
+  useEffect(() => {
+    if (submissions.length === 0) return;
+
+    if (initialLoadRef.current) {
+      // First load: cache all already graded submission IDs
+      submissions.forEach((s) => {
+        if (s.gradingStatus === 'graded') {
+          prevGradedSubsRef.current.add(s.id);
+        }
+      });
+      initialLoadRef.current = false;
+      return;
+    }
+
+    // Check if any submission belonging to this student just became graded
+    const newlyGraded = submissions.find((s) => {
+      const isGraded = s.gradingStatus === 'graded';
+      const alreadyNotified = prevGradedSubsRef.current.has(s.id);
+      const isForCurrentStudent =
+        userRole === 'student' &&
+        (s.studentName.toLowerCase() === currentUser.fullName.toLowerCase() ||
+         (currentUser.studentId && s.studentId === currentUser.studentId));
+
+      return isGraded && !alreadyNotified && isForCurrentStudent;
+    });
+
+    if (newlyGraded) {
+      prevGradedSubsRef.current.add(newlyGraded.id);
+      const examRef = exams.find((e) => e.id === newlyGraded.examId);
+      setLiveNotification({
+        id: newlyGraded.id,
+        examId: newlyGraded.examId,
+        examTitle: examRef ? examRef.title : `Đề thi #${newlyGraded.examId}`,
+        score: newlyGraded.score,
+        mcScore: newlyGraded.multipleChoiceScore,
+        essayScore: newlyGraded.essayScore,
+        teacherFeedback: newlyGraded.teacherFeedback,
+        gradedAt: new Date().toISOString()
+      });
+    }
+
+    // Always keep cache updated
+    submissions.forEach((s) => {
+      if (s.gradingStatus === 'graded') {
+        prevGradedSubsRef.current.add(s.id);
+      }
+    });
+  }, [submissions, currentUser, userRole, exams]);
 
   // Handler: Change Role
   const handleRoleChange = (newRole: UserRole) => {
@@ -348,6 +404,16 @@ export default function App() {
         onClose={() => setIsAccountModalOpen(false)}
         currentUser={currentUser}
         onUserChange={handleUserChange}
+      />
+
+      {/* Realtime Grading Notification Toast */}
+      <GradingNotificationToast
+        notification={liveNotification}
+        onClose={() => setLiveNotification(null)}
+        onViewDetails={(examId) => {
+          setUserRole('student');
+          setCurrentTab('student_history');
+        }}
       />
 
       {/* Global Footer */}

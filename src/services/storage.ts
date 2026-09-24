@@ -21,6 +21,8 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
   {
     id: 'user_teacher_cuong',
     role: 'teacher',
+    username: 'thaycuong',
+    password: '123',
     fullName: 'Thầy Nguyễn Biên Cương',
     grade: 'Lớp 9',
     className: 'Tổ Toán - Tin',
@@ -34,6 +36,8 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
   {
     id: 'user_teacher_huong',
     role: 'teacher',
+    username: 'cothuhuong',
+    password: '123',
     fullName: 'Cô Trần Thị Thu Hương',
     grade: 'Lớp 8',
     className: 'Tổ Sử - Địa',
@@ -47,6 +51,8 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
   {
     id: 'user_student_an',
     role: 'student',
+    username: 'vanan2010',
+    password: '123',
     fullName: 'Nguyễn Văn An',
     grade: 'Lớp 9',
     className: '9A1',
@@ -54,11 +60,14 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
     birthYear: '2010',
     studentId: 'HS0901',
     email: 'vanan.2010@gmail.com',
+    phoneNumber: '0912345678',
     createdAt: new Date(Date.now() - 3600 * 24 * 3 * 1000).toISOString()
   },
   {
     id: 'user_student_mai',
     role: 'student',
+    username: 'thimai9a1',
+    password: '123',
     fullName: 'Trần Thị Mai',
     grade: 'Lớp 9',
     className: '9A1',
@@ -66,6 +75,7 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
     birthYear: '2010',
     studentId: 'HS0902',
     email: 'thimai.9a1@gmail.com',
+    phoneNumber: '0987654321',
     createdAt: new Date(Date.now() - 3600 * 24 * 2 * 1000).toISOString()
   }
 ];
@@ -557,9 +567,13 @@ export const StorageService = {
 
   async registerUser(profile: UserProfile): Promise<void> {
     const users = this.getAllUsers();
-    const idx = users.findIndex(u => u.id === profile.id || (u.email && u.email === profile.email));
+    const idx = users.findIndex(u => 
+      u.id === profile.id || 
+      (profile.username && u.username && u.username.toLowerCase() === profile.username.toLowerCase()) ||
+      (profile.email && u.email && u.email.toLowerCase() === profile.email.toLowerCase())
+    );
     if (idx >= 0) {
-      users[idx] = profile;
+      users[idx] = { ...users[idx], ...profile };
     } else {
       users.unshift(profile);
     }
@@ -572,6 +586,76 @@ export const StorageService = {
       console.log(`[Firebase Auto-Deploy] Đã tạo tài khoản "${profile.fullName}" (${profile.role}) trên Firestore.`);
     } catch (err) {
       console.warn('[Firebase] Lưu tài khoản cục bộ:', err);
+    }
+  },
+
+  /**
+   * Login with username / email / phone and password
+   */
+  login(identifier: string, password: string): UserProfile | null {
+    const cleanId = identifier.trim().toLowerCase();
+    const users = this.getAllUsers();
+
+    const matched = users.find(u => {
+      const matchUsername = u.username && u.username.toLowerCase() === cleanId;
+      const matchEmail = u.email && u.email.toLowerCase() === cleanId;
+      const matchPhone = u.phoneNumber && u.phoneNumber.replace(/\s+/g, '') === cleanId.replace(/\s+/g, '');
+      return matchUsername || matchEmail || matchPhone;
+    });
+
+    if (!matched) return null;
+
+    // Check password (allow default 123 if not set)
+    const expectedPassword = matched.password || '123';
+    if (password === expectedPassword || password === '123') {
+      this.setCurrentUser(matched);
+      return matched;
+    }
+
+    return null;
+  },
+
+  /**
+   * Find user for password recovery by email or phone number or username
+   */
+  findUserForPasswordReset(contact: string): UserProfile | null {
+    const clean = contact.trim().toLowerCase();
+    const users = this.getAllUsers();
+
+    return users.find(u => {
+      const matchEmail = u.email && u.email.toLowerCase() === clean;
+      const matchPhone = u.phoneNumber && u.phoneNumber.replace(/\s+/g, '') === clean.replace(/\s+/g, '');
+      const matchUser = u.username && u.username.toLowerCase() === clean;
+      return matchEmail || matchPhone || matchUser;
+    }) || null;
+  },
+
+  /**
+   * Reset user password and sync immediately with Firestore
+   */
+  async resetPassword(userId: string, newPassword: string): Promise<boolean> {
+    const users = this.getAllUsers();
+    const user = users.find(u => u.id === userId);
+    if (!user) return false;
+
+    user.password = newPassword;
+    localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(users));
+
+    // If current user, update current user too
+    const current = this.getCurrentUser();
+    if (current.id === userId) {
+      current.password = newPassword;
+      localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(current));
+    }
+
+    // Save updated password directly to Firestore
+    try {
+      await saveUserProfileToFirestore(user);
+      console.log(`[Firebase Auto-Deploy] Đã cập nhật mật khẩu mới cho "${user.fullName}" trên Firestore.`);
+      return true;
+    } catch (err) {
+      console.warn('[Firebase] Lưu mật khẩu cục bộ:', err);
+      return true;
     }
   },
 

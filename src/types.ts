@@ -5,6 +5,8 @@ export type UserRole = 'teacher' | 'student';
 export interface UserProfile {
   id: string;
   role: UserRole;
+  username?: string; // Tên tài khoản đăng nhập (VD: nguyenvanan, cuong.toan)
+  password?: string; // Mật khẩu tài khoản
   fullName: string;
   grade: string; // 'Lớp 6' -> 'Lớp 12', hoặc 'Tất cả'
   className: string; // e.g. '9A1', '12A2', hoặc bộ môn

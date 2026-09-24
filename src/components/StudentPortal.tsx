@@ -21,7 +21,8 @@ import {
   AlertTriangle,
   HelpCircle,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  X
 } from 'lucide-react';
 import { Exam, ExamSubmission, UserProfile } from '../types';
 import { InteractiveGames } from './InteractiveGames';
@@ -55,6 +56,9 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
   // Selected submission to inspect answers
   const [inspectingSub, setInspectingSub] = useState<ExamSubmission | null>(null);
+  const [inspectingGradedSub, setInspectingGradedSub] = useState<{ sub: ExamSubmission; exam?: Exam } | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'graded' | 'pending'>('all');
+  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
   // Practice question state for Study Corner
   const [practiceSubject, setPracticeSubject] = useState<string>('Toán học');
@@ -100,6 +104,15 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
         (currentUser.studentId && s.studentId === currentUser.studentId)
     );
   }, [submissions, currentUser]);
+
+  const gradedSubs = useMemo(() => mySubmissions.filter(s => s.gradingStatus === 'graded'), [mySubmissions]);
+  const pendingSubs = useMemo(() => mySubmissions.filter(s => s.gradingStatus !== 'graded'), [mySubmissions]);
+
+  const filteredHistorySubs = useMemo(() => {
+    if (historyFilter === 'graded') return gradedSubs;
+    if (historyFilter === 'pending') return pendingSubs;
+    return mySubmissions;
+  }, [mySubmissions, gradedSubs, pendingSubs, historyFilter]);
 
   // My stats
   const completedCount = mySubmissions.length;
@@ -185,8 +198,13 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               <span>Giao Diện Học Tập & Làm Bài Dành Cho Học Sinh</span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Xin chào, <span className="text-amber-300">{currentUser.fullName}</span>! 👋
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight flex flex-wrap items-center gap-2">
+              <span>Xin chào, <span className="text-amber-300">{currentUser.fullName}</span>! 👋</span>
+              {currentUser.username && (
+                <span className="text-xs font-mono bg-black/25 text-emerald-200 px-2 py-0.5 rounded-lg border border-white/10 font-normal">
+                  @{currentUser.username}
+                </span>
+              )}
             </h1>
 
             <p className="text-emerald-100 text-xs sm:text-sm flex flex-wrap items-center gap-3">
@@ -208,6 +226,12 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                   <span className="text-amber-200 font-bold">SBD: {currentUser.studentId}</span>
                 </>
               )}
+              {currentUser.phoneNumber && (
+                <>
+                  <span>•</span>
+                  <span className="text-emerald-200">SĐT: {currentUser.phoneNumber}</span>
+                </>
+              )}
             </p>
           </div>
 
@@ -218,7 +242,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
               className="px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold transition-all flex items-center gap-2 backdrop-blur-xs cursor-pointer"
             >
               <UserCheck className="w-4 h-4 text-amber-300" />
-              <span>Đổi thông tin / Đổi tài khoản</span>
+              <span>Tài khoản / Đổi mật khẩu</span>
             </button>
           </div>
         </div>
@@ -447,11 +471,23 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                           {exam.subject}
                         </span>
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
-                            isMyGrade ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}>
-                            {exam.grade}
-                          </span>
+                          {hasSub && hasSub.gradingStatus === 'graded' ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white shadow-xs animate-in fade-in">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" style={{ animationDuration: '4s' }} />
+                              ĐÃ CHẤM: {hasSub.score}đ
+                            </span>
+                          ) : hasSub ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 border border-amber-300">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              Chờ chấm tự luận
+                            </span>
+                          ) : (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
+                              isMyGrade ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}>
+                              {exam.grade}
+                            </span>
+                          )}
                           {exam.targetClass && (
                             <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                               Lớp {exam.targetClass}
@@ -490,25 +526,50 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                       </div>
                     </div>
 
-                    {/* Footer Action */}
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    {/* Footer Action with 'Đã chấm' indicator */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                       {hasSub ? (
-                        <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-bold">
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Đã nộp bài ({hasSub.score}đ)</span>
-                        </div>
+                        hasSub.gradingStatus === 'graded' ? (
+                          <div className="flex flex-col min-w-0">
+                            <span className="inline-flex items-center gap-1 text-xs font-black text-emerald-700">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Điểm: <strong className="text-sm font-extrabold text-emerald-600">{hasSub.score}</strong>/10đ</span>
+                            </span>
+                            <span className="text-[10px] text-slate-500 truncate">
+                              TN: {hasSub.multipleChoiceScore ?? hasSub.score}đ • TL: {hasSub.essayScore ?? 0}đ
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-[11px] text-amber-700 font-bold">
+                            <Clock className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Đã nộp • Chờ chấm</span>
+                          </div>
+                        )
                       ) : (
-                        <span className="text-[11px] text-slate-400 font-medium">Chưa làm</span>
+                        <span className="text-[11px] text-slate-400 font-medium">Chưa làm bài</span>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => onSelectExam(exam.id)}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer group-hover:translate-x-0.5"
-                      >
-                        <span>{hasSub ? 'Làm lại bài thi' : 'Vào phòng thi'}</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {hasSub && hasSub.gradingStatus === 'graded' && (
+                          <button
+                            type="button"
+                            onClick={() => setInspectingGradedSub({ sub: hasSub, exam })}
+                            className="px-2.5 py-1.5 rounded-xl border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold transition-colors cursor-pointer"
+                            title="Xem chi tiết điểm từng câu và lời phê của giáo viên"
+                          >
+                            Xem điểm
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => onSelectExam(exam.id)}
+                          className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs flex items-center gap-1 transition-all cursor-pointer group-hover:translate-x-0.5"
+                        >
+                          <span>{hasSub ? 'Làm lại' : 'Vào thi'}</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -629,54 +690,137 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       {activeMenu === 'history' && (
         <div className="space-y-6">
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <h2 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                <Award className="w-5 h-5 text-amber-500" />
-                Kết Quả & Bảng Điểm Cá Nhân Của Em
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Xem lại điểm số, nhận xét của thầy cô và chi tiết bài làm từng câu
-              </p>
-            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <Award className="w-5 h-5 text-amber-500" />
+                  Kết Quả & Bảng Điểm Cá Nhân Của Em
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Xem lại điểm số, nhận xét của thầy cô và chi tiết bài làm từng câu
+                </p>
+              </div>
 
-            {mySubmissions.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 space-y-2">
-                <Award className="w-10 h-10 mx-auto text-slate-300" />
-                <p className="text-xs">Em chưa nộp bài thi nào trên hệ thống.</p>
+              {/* Status Filter for History */}
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
                 <button
                   type="button"
-                  onClick={() => setActiveMenu('exams')}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+                  onClick={() => setHistoryFilter('all')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    historyFilter === 'all'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  Chọn đề và làm bài ngay
+                  Tất cả ({mySubmissions.length})
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilter('graded')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    historyFilter === 'graded'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-emerald-700'
+                  }`}
+                >
+                  ✓ Đã chấm ({gradedSubs.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilter('pending')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    historyFilter === 'pending'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-amber-700'
+                  }`}
+                >
+                  ⏳ Chờ chấm ({pendingSubs.length})
+                </button>
+              </div>
+            </div>
+
+            {filteredHistorySubs.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 space-y-2">
+                <Award className="w-10 h-10 mx-auto text-slate-300" />
+                <p className="text-xs">
+                  {historyFilter === 'graded'
+                    ? 'Chưa có bài thi nào được giáo viên chấm xong.'
+                    : historyFilter === 'pending'
+                    ? 'Không có bài thi nào đang chờ chấm.'
+                    : 'Em chưa nộp bài thi nào trên hệ thống.'}
+                </p>
+                {historyFilter !== 'all' ? (
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilter('all')}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+                  >
+                    Xem tất cả bài nộp
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveMenu('exams')}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+                  >
+                    Chọn đề và làm bài ngay
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-3">
-                {mySubmissions.map((sub) => {
+                {filteredHistorySubs.map((sub) => {
                   const examRef = exams.find((e) => e.id === sub.examId);
+                  const isGraded = sub.gradingStatus === 'graded';
 
                   return (
                     <div
                       key={sub.id}
-                      className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                      className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                        isGraded
+                          ? 'border-emerald-200 bg-emerald-50/20 hover:bg-emerald-50/40 shadow-xs'
+                          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
+                      }`}
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 text-sm">
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-slate-900 text-sm truncate">
                             {examRef ? examRef.title : `Đề thi #${sub.examId}`}
                           </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                            {sub.gradingStatus === 'graded' ? 'Đã chấm điểm' : 'Chờ chấm tự luận'}
-                          </span>
+
+                          {/* Prominent Status Badge */}
+                          {isGraded ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-2xs animate-in fade-in">
+                              <Sparkles className="w-3 h-3 text-amber-300" />
+                              ĐÃ CHẤM XONG ({sub.score}/10đ)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              Chờ cô chấm tự luận
+                            </span>
+                          )}
+
+                          {examRef && (
+                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
+                              {examRef.subject} • {examRef.grade}
+                            </span>
+                          )}
                         </div>
+
                         <p className="text-[11px] text-slate-500">
                           Nộp lúc: {new Date(sub.submittedAt).toLocaleString('vi-VN')} • Thời gian làm: {Math.floor(sub.timeSpentSeconds / 60)} phút • Vi phạm: {sub.violationsCount} lần
                         </p>
+
+                        {/* Teacher's Feedback Quote */}
                         {sub.teacherFeedback && (
-                          <p className="text-xs text-blue-700 bg-blue-50 p-2 rounded-lg border border-blue-100 font-medium">
-                            💬 Nhận xét của giáo viên: "{sub.teacherFeedback}"
-                          </p>
+                          <div className="text-xs text-blue-800 bg-blue-50/90 p-2.5 rounded-xl border border-blue-200/80 font-medium flex items-start gap-2">
+                            <span className="text-sm">💬</span>
+                            <div>
+                              <strong className="text-blue-900">Lời phê của giáo viên:</strong>
+                              <p className="mt-0.5 text-slate-700 italic">"{sub.teacherFeedback}"</p>
+                            </div>
+                          </div>
                         )}
                       </div>
 
@@ -684,26 +828,179 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                         <div className="text-right">
                           <span className="text-2xl font-black text-emerald-600">{sub.score}</span>
                           <span className="text-xs text-slate-400">/10 điểm</span>
-                          <div className="text-[10px] text-slate-500">
+                          <div className="text-[10px] text-slate-500 font-semibold">
                             TN: {sub.multipleChoiceScore ?? sub.score}đ • TL: {sub.essayScore ?? 0}đ
                           </div>
                         </div>
 
-                        {examRef && (
-                          <button
-                            type="button"
-                            onClick={() => onSelectExam(examRef.id)}
-                            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors"
-                          >
-                            Xem lại / Thi lại
-                          </button>
-                        )}
+                        <div className="flex flex-col gap-1.5">
+                          {isGraded && (
+                            <button
+                              type="button"
+                              onClick={() => setInspectingGradedSub({ sub, exam: examRef })}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-300" />
+                              <span>Xem điểm chi tiết</span>
+                            </button>
+                          )}
+
+                          {examRef && (
+                            <button
+                              type="button"
+                              onClick={() => onSelectExam(examRef.id)}
+                              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-colors cursor-pointer text-center"
+                            >
+                              Làm lại
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: VIEW DETAILED GRADED EXAM RESULTS */}
+      {inspectingGradedSub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-700 to-teal-800 text-white p-6 relative">
+              <button
+                type="button"
+                onClick={() => setInspectingGradedSub(null)}
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-emerald-100 text-xs font-black uppercase mb-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                Phiếu Điểm & Nhận Xét Chi Tiết
+              </div>
+
+              <h3 className="text-xl font-bold tracking-tight">
+                {inspectingGradedSub.exam?.title || `Bài thi #${inspectingGradedSub.sub.examId}`}
+              </h3>
+
+              <p className="text-xs text-emerald-100 mt-1">
+                Học sinh: <strong className="text-white">{inspectingGradedSub.sub.studentName}</strong> • Lớp: <strong className="text-white">{inspectingGradedSub.sub.studentClass}</strong> • SBD: {inspectingGradedSub.sub.studentId || 'Chưa có'}
+              </p>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+              {/* Score Summary Box */}
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 grid grid-cols-3 gap-3 text-center">
+                <div className="p-2 rounded-xl bg-white border border-emerald-100">
+                  <span className="text-[11px] text-slate-500 block">Trắc nghiệm</span>
+                  <span className="text-lg font-black text-slate-800">
+                    {inspectingGradedSub.sub.multipleChoiceScore ?? inspectingGradedSub.sub.score}đ
+                  </span>
+                </div>
+                <div className="p-2 rounded-xl bg-white border border-emerald-100">
+                  <span className="text-[11px] text-slate-500 block">Tự luận cô chấm</span>
+                  <span className="text-lg font-black text-blue-600">
+                    {inspectingGradedSub.sub.essayScore ?? 0}đ
+                  </span>
+                </div>
+                <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
+                  <span className="text-[11px] text-emerald-100 block font-semibold">TỔNG ĐIỂM</span>
+                  <span className="text-xl font-black text-amber-300">
+                    {inspectingGradedSub.sub.score}/10đ
+                  </span>
+                </div>
+              </div>
+
+              {/* Teacher Overall Feedback */}
+              {inspectingGradedSub.sub.teacherFeedback && (
+                <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 space-y-1">
+                  <span className="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                    <span>💬</span>
+                    <span>Nhận xét chung của giáo viên:</span>
+                  </span>
+                  <p className="text-xs text-slate-700 italic bg-white p-3 rounded-xl border border-blue-100">
+                    "{inspectingGradedSub.sub.teacherFeedback}"
+                  </p>
+                </div>
+              )}
+
+              {/* Essay Questions Detail Breakdown */}
+              {inspectingGradedSub.exam && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Chi tiết điểm từng câu Tự luận:
+                  </h4>
+
+                  {inspectingGradedSub.exam.questions
+                    .filter(q => q.type === 'essay')
+                    .map((q, idx) => {
+                      const scoreDetail = inspectingGradedSub.sub.essayScores?.[q.id];
+                      const studentAnswer = inspectingGradedSub.sub.answers[q.id];
+
+                      return (
+                        <div key={q.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-lg">
+                              Câu {q.order || idx + 1} (Tự luận - Tối đa {q.points}đ)
+                            </span>
+                            <span className="text-xs font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-lg">
+                              Điểm đạt: {scoreDetail ? scoreDetail.score : 0} / {q.points}đ
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-800 font-semibold">{q.text}</p>
+
+                          {/* Student Answer */}
+                          <div className="text-xs bg-white p-3 rounded-xl border border-slate-200">
+                            <span className="text-[11px] text-slate-400 block font-bold mb-0.5">
+                              Bài làm của em:
+                            </span>
+                            <p className="text-slate-700 whitespace-pre-wrap">
+                              {studentAnswer || 'Em chưa làm câu hỏi này.'}
+                            </p>
+                          </div>
+
+                          {/* Teacher Note on this question */}
+                          {scoreDetail?.teacherNote && (
+                            <div className="text-xs bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-amber-900">
+                              <span className="font-bold block">Ghi chú của giáo viên:</span>
+                              <p className="italic">{scoreDetail.teacherNote}</p>
+                            </div>
+                          )}
+
+                          {/* Model Answer / Rubric */}
+                          {q.modelAnswer && (
+                            <details className="text-xs text-slate-600 bg-slate-100 p-2.5 rounded-xl">
+                              <summary className="font-bold text-slate-700 cursor-pointer hover:underline">
+                                Xem đáp án mẫu & hướng dẫn chấm
+                              </summary>
+                              <p className="mt-2 whitespace-pre-wrap text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
+                                {q.modelAnswer}
+                              </p>
+                            </details>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setInspectingGradedSub(null)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold cursor-pointer"
+                >
+                  Đóng phiếu điểm
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
