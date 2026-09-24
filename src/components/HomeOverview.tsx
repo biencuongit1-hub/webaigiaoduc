@@ -399,18 +399,22 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                   {exam.description || 'Đề kiểm tra trắc nghiệm đánh giá năng lực học sinh.'}
                 </p>
 
-                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 pt-1">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    {exam.durationMinutes} phút
+                <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
+                  <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                    {exam.questions.filter(q => (q.type || 'multiple_choice') === 'multiple_choice').length} TN ({exam.multipleChoicePoints ?? 7}đ)
                   </span>
-                  <span>•</span>
-                  <span>{exam.questions.length} câu hỏi</span>
-                  <span>•</span>
-                  <span>Thang điểm {exam.totalPoints}</span>
+                  {exam.questions.some(q => q.type === 'essay') && (
+                    <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
+                      {exam.questions.filter(q => q.type === 'essay').length} TL ({exam.essayPoints ?? 3}đ)
+                    </span>
+                  )}
+                  <span className="text-slate-400 font-semibold">•</span>
+                  <span className="font-bold text-slate-700">{exam.durationMinutes} phút</span>
+                  <span className="text-slate-400 font-semibold">•</span>
+                  <span className="font-bold text-amber-700">{exam.totalPoints}đ</span>
                   {exam.settings.antiCheatProctoring && (
                     <>
-                      <span>•</span>
+                      <span className="text-slate-400 font-semibold">•</span>
                       <span className="text-amber-700 font-medium flex items-center gap-1">
                         <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
                         Giám sát tab

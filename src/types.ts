@@ -1,3 +1,5 @@
+export type QuestionType = 'multiple_choice' | 'essay';
+
 export interface QuestionOption {
   id: string;
   text: string;
@@ -6,11 +8,14 @@ export interface QuestionOption {
 export interface Question {
   id: string;
   order: number;
+  type?: QuestionType; // 'multiple_choice' | 'essay'
   text: string;
-  options: QuestionOption[];
-  correctOptionId: string;
+  options?: QuestionOption[]; // for multiple choice
+  correctOptionId?: string; // e.g. 'A', 'B', 'C', 'D'
+  modelAnswer?: string; // for essay: đáp án mẫu & hướng dẫn chấm chi tiết
   explanation?: string;
   points: number;
+  rubric?: string; // thang điểm chi tiết
   image?: string;
 }
 
@@ -38,6 +43,8 @@ export interface Exam {
   grade: string;
   durationMinutes: number;
   totalPoints: number;
+  multipleChoicePoints?: number; // Điểm phần trắc nghiệm
+  essayPoints?: number; // Điểm phần tự luận
   questions: Question[];
   settings: ExamSettings;
   createdAt: string;
@@ -53,21 +60,33 @@ export interface ViolationLog {
   message: string;
 }
 
+export interface EssayScoreDetail {
+  score: number;
+  maxScore: number;
+  teacherNote?: string;
+}
+
 export interface ExamSubmission {
   id: string;
   examId: string;
   studentName: string;
   studentClass: string;
   studentId?: string;
-  answers: Record<string, string>; // questionId -> optionId
-  score: number;
+  answers: Record<string, string>; // questionId -> optionId (MC) OR written text (Essay)
+  essayAttachments?: Record<string, string>; // questionId -> image url / data url
+  essayScores?: Record<string, EssayScoreDetail>; // questionId -> score detail
+  multipleChoiceScore?: number;
+  essayScore?: number;
+  score: number; // total = multipleChoiceScore + essayScore
   totalQuestions: number;
   correctCount: number;
   timeSpentSeconds: number;
   submittedAt: string;
   violationsCount: number;
   violationLogs: ViolationLog[];
-  status: 'completed' | 'in_progress';
+  status: 'completed' | 'graded' | 'in_progress';
+  gradingStatus?: 'graded' | 'pending_review';
+  teacherFeedback?: string;
 }
 
 export interface FirebaseConfigState {

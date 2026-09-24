@@ -9,21 +9,51 @@ import { Virtual360Space } from './components/Virtual360Space';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { FirebaseDeployGuide } from './components/FirebaseDeployGuide';
 import { StorageService } from './services/storage';
+import { testConnection, subscribeToExams, subscribeToSubmissions } from './services/firebase';
 import { Exam, ExamSubmission } from './types';
-import { Heart, Sparkles } from 'lucide-react';
+import { Heart, Sparkles, CheckCircle2, Flame, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home');
   const [exams, setExams] = useState<Exam[]>([]);
   const [submissions, setSubmissions] = useState<ExamSubmission[]>([]);
   const [activeExamForStudent, setActiveExamForStudent] = useState<Exam | null>(null);
+  const [isCloudSynced, setIsCloudSynced] = useState(false);
 
-  // Load initial data from StorageService
+  // Load initial data from StorageService & setup Firestore sync
   useEffect(() => {
     const loadedExams = StorageService.getExams();
     const loadedSubs = StorageService.getSubmissions();
     setExams(loadedExams);
     setSubmissions(loadedSubs);
+
+    // Test connection and sync with Firestore cloud database
+    testConnection().then(() => {
+      setIsCloudSynced(true);
+      StorageService.syncWithCloud().then(({ examCount, submissionCount }) => {
+        console.log(`[Firebase Cloud] Đã đồng bộ ${examCount} đề thi và ${submissionCount} bài làm từ Firestore.`);
+        setExams(StorageService.getExams());
+        setSubmissions(StorageService.getSubmissions());
+      }).catch(() => {});
+    }).catch(() => {});
+
+    // Subscribe to Firestore real-time updates
+    let unsubExams: (() => void) | undefined;
+    let unsubSubs: (() => void) | undefined;
+    try {
+      unsubExams = subscribeToExams((cloudExams) => {
+        if (cloudExams && cloudExams.length > 0) {
+          setExams(cloudExams);
+        }
+      });
+      unsubSubs = subscribeToSubmissions(undefined, (cloudSubs) => {
+        if (cloudSubs && cloudSubs.length > 0) {
+          setSubmissions(cloudSubs);
+        }
+      });
+    } catch {
+      // Fallback
+    }
 
     // Check URL params for direct exam join code (?code=XYZ)
     const params = new URLSearchParams(window.location.search);
@@ -35,6 +65,11 @@ export default function App() {
         setCurrentTab('student_room');
       }
     }
+
+    return () => {
+      if (unsubExams) unsubExams();
+      if (unsubSubs) unsubSubs();
+    };
   }, []);
 
   // Handler: Student joins exam by access code
@@ -59,8 +94,8 @@ export default function App() {
   };
 
   // Handler: Save newly created exam
-  const handleSaveExam = (newExam: Exam) => {
-    StorageService.saveExam(newExam);
+  const handleSaveExam = async (newExam: Exam) => {
+    await StorageService.saveExam(newExam);
     const updated = StorageService.getExams();
     setExams(updated);
     // Switch to management page
@@ -68,16 +103,16 @@ export default function App() {
   };
 
   // Handler: Delete exam
-  const handleDeleteExam = (id: string) => {
+  const handleDeleteExam = async (id: string) => {
     if (confirm('Bạn có chắc chắn muốn xóa đề thi này không? Dữ liệu bài làm liên quan cũng sẽ bị gỡ bỏ.')) {
-      StorageService.deleteExam(id);
+      await StorageService.deleteExam(id);
       setExams(StorageService.getExams());
     }
   };
 
   // Handler: Complete student submission
-  const handleFinishSubmission = (submission: ExamSubmission) => {
-    StorageService.saveSubmission(submission);
+  const handleFinishSubmission = async (submission: ExamSubmission) => {
+    await StorageService.saveSubmission(submission);
     setSubmissions(StorageService.getSubmissions());
   };
 
@@ -97,6 +132,52 @@ export default function App() {
 
       {/* Main Body Content Container */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        {/* Firebase Cloud Live Database Status Banner */}
+        <div className="mb-6 p-3.5 rounded-2xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-blue-500/10 border border-orange-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Flame className="w-4 h-4 fill-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-900">
+                  Firebase Cloud Firestore: Đã kích hoạt tự động đồng bộ
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Đang hoạt động (Free Database)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Mọi đề thi từ Word/PDF và bài làm học sinh đều tự động đồng bộ lên Database đám mây để học sinh làm bài từ mọi thiết bị.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await StorageService.syncWithCloud();
+                setExams(StorageService.getExams());
+                setSubmissions(StorageService.getSubmissions());
+                alert(`Đồng bộ thành công! Hiện có ${res.examCount} đề thi và ${res.submissionCount} bài làm trên Cloud.`);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200 shadow-2xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+              <span>Đồng bộ ngay</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentTab('create_exam')}
+              className="px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
+            >
+              <span>+ Úp đề Word/PDF</span>
+            </button>
+          </div>
+        </div>
+
         {/* VIEW: HOME OVERVIEW */}
         {currentTab === 'home' && (
           <HomeOverview
@@ -124,6 +205,7 @@ export default function App() {
             onTakeExam={(id) => {
               handleSelectExamForStudent(id);
             }}
+            onUpdateSubmission={handleFinishSubmission}
             onCreateNew={() => setCurrentTab('create_exam')}
           />
         )}

@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health check / connection test
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Exam definitions created by teachers, viewable by students
+    match /exams/{examId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.title is string
+                            && request.resource.data.title.size() > 0
+                            && request.resource.data.accessCode is string;
+      allow delete: if true;
+    }
+
+    // Submissions by students and graded by teachers
+    match /submissions/{submissionId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.studentName is string
+                            && request.resource.data.studentName.size() > 0
+                            && request.resource.data.examId is string;
+      allow delete: if true;
+    }
+  }
+}
