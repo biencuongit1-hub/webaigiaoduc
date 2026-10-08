@@ -295,37 +295,56 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2">
             {isLoggedIn ? (
               <>
-                {/* Role switch toggle */}
-                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                {/* Role indicator / switch: ONLY TEACHER CAN TOGGLE, STUDENT IS LOCKED TO STUDENT LEARNING */}
+                {currentUser.role === 'teacher' ? (
+                  <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    <button
+                      id="role-teacher-btn"
+                      onClick={() => {
+                        setUserRole('teacher');
+                        onSelectTab('home');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        isTeacher
+                          ? 'bg-white text-blue-700 shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      👨‍🏫 Giáo viên
+                    </button>
+                    <button
+                      id="role-student-btn"
+                      onClick={() => {
+                        setUserRole('student');
+                        onSelectTab('student_portal');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        !isTeacher
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      🎓 Xem như HS
+                    </button>
+                  </div>
+                ) : (
+                  <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                    <GraduationCap className="w-4 h-4 text-emerald-600" />
+                    <span>Học sinh ({currentUser.grade})</span>
+                  </div>
+                )}
+
+                {/* Quick Join Exam Code for Student */}
+                {currentUser.role === 'student' && onOpenExamByCode && (
                   <button
-                    id="role-teacher-btn"
-                    onClick={() => {
-                      setUserRole('teacher');
-                      onSelectTab('home');
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      isTeacher
-                        ? 'bg-white text-blue-700 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    type="button"
+                    onClick={onOpenExamByCode}
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
                   >
-                    👨‍🏫 Giáo viên
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Nhập mã đề</span>
                   </button>
-                  <button
-                    id="role-student-btn"
-                    onClick={() => {
-                      setUserRole('student');
-                      onSelectTab('student_portal');
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      !isTeacher
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    🎓 Học sinh
-                  </button>
-                </div>
+                )}
 
                 {/* Logged in User Profile Pill Button */}
                 <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-2xl p-1 pr-2">
@@ -402,20 +421,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* Cloud Sync Button */}
-            <button
-              id="btn-nav-firebase"
-              onClick={() => onSelectTab('firebase_deploy')}
-              title="Đồng bộ Vercel & Firebase Cloud"
-              className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                currentTab === 'firebase_deploy'
-                  ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
-                  : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
-              }`}
-            >
-              <Flame className="w-4 h-4 text-orange-600" />
-              <span className="hidden md:inline">Cloud Sync</span>
-            </button>
+            {/* Cloud Sync Button - ONLY FOR TEACHER */}
+            {currentUser?.role === 'teacher' && (
+              <button
+                id="btn-nav-firebase"
+                onClick={() => onSelectTab('firebase_deploy')}
+                title="Đồng bộ Vercel & Firebase Cloud"
+                className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                  currentTab === 'firebase_deploy'
+                    ? 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                    : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
+                }`}
+              >
+                <Flame className="w-4 h-4 text-orange-600" />
+                <span className="hidden md:inline">Cloud Sync</span>
+              </button>
+            )}
           </div>
         </div>
 

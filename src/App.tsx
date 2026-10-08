@@ -15,7 +15,7 @@ import { GradingNotificationToast, GradingNotification } from './components/Grad
 import { StorageService } from './services/storage';
 import { testConnection, subscribeToExams, subscribeToSubmissions, subscribeToUserProfiles } from './services/firebase';
 import { Exam, ExamSubmission, UserProfile, UserRole } from './types';
-import { Heart, Sparkles, CheckCircle2, Flame, RefreshCw, UserCheck, Cloud, LogIn, Lock } from 'lucide-react';
+import { Heart, Sparkles, CheckCircle2, Flame, RefreshCw, UserCheck, Cloud, LogIn, Lock, GraduationCap, BookOpen, Award } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => StorageService.getCurrentUser());
@@ -160,19 +160,46 @@ export default function App() {
     });
   }, [submissions, currentUser, userRole, exams]);
 
-  // Handler: Change Role
+  const STUDENT_ALLOWED_TABS = ['student_portal', 'student_study', 'student_history', 'student_room', 'games', 'vr360'];
+
+  // Enforce student RBAC: if currentUser is student, restrict strictly to learning menus
+  useEffect(() => {
+    if (currentUser?.role === 'student') {
+      if (userRole !== 'student') {
+        setUserRole('student');
+      }
+      if (!STUDENT_ALLOWED_TABS.includes(currentTab)) {
+        setCurrentTab('student_portal');
+      }
+    }
+  }, [currentUser, currentTab, userRole]);
+
+  // Handler: Change Role (Strict RBAC: student cannot switch to teacher)
   const handleRoleChange = (newRole: UserRole) => {
-    setUserRole(newRole);
-    if (currentUser) {
-      const updated = { ...currentUser, role: newRole };
-      StorageService.setCurrentUser(updated);
-      setCurrentUser(updated);
+    if (currentUser?.role === 'student') {
+      // Student is restricted to student role only
+      setUserRole('student');
+      setCurrentTab('student_portal');
+      return;
     }
 
+    setUserRole(newRole);
     if (newRole === 'student') {
       setCurrentTab('student_portal');
     } else {
       setCurrentTab('home');
+    }
+  };
+
+  // Handler: Select Tab with RBAC enforcement
+  const handleSelectTab = (tab: string) => {
+    if (currentUser?.role === 'student' && !STUDENT_ALLOWED_TABS.includes(tab)) {
+      setCurrentTab('student_portal');
+      return;
+    }
+    setCurrentTab(tab);
+    if (tab !== 'student_room') {
+      setActiveExamForStudent(null);
     }
   };
 
@@ -248,12 +275,7 @@ export default function App() {
       {/* Top Main Navigation */}
       <Navbar
         currentTab={currentTab}
-        onSelectTab={(tab) => {
-          setCurrentTab(tab);
-          if (tab !== 'student_room') {
-            setActiveExamForStudent(null);
-          }
-        }}
+        onSelectTab={handleSelectTab}
         userRole={userRole}
         setUserRole={handleRoleChange}
         currentUser={currentUser}
@@ -280,15 +302,19 @@ export default function App() {
           {/* Realtime User Status & Cloud Sync Banner */}
           <div className="mb-6 p-3.5 rounded-2xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-blue-500/10 border border-orange-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                <Flame className="w-4 h-4 fill-white" />
+              <div className={`w-8 h-8 rounded-xl text-white flex items-center justify-center shrink-0 shadow-xs ${
+                currentUser.role === 'teacher' ? 'bg-orange-600' : 'bg-emerald-600'
+              }`}>
+                {currentUser.role === 'teacher' ? <Flame className="w-4 h-4 fill-white" /> : <GraduationCap className="w-4 h-4" />}
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-slate-900">
                     Trạng thái:
                   </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black">
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black ${
+                    currentUser.role === 'teacher' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+                  }`}>
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Đã đăng nhập ({currentUser.role === 'teacher' ? '👨‍🏫 Giáo viên' : `🎓 Học sinh ${currentUser.grade}`})
                   </span>
@@ -297,35 +323,81 @@ export default function App() {
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Dữ liệu bài thi & điểm số được tự động đồng bộ thời gian thực hai chiều giữa thiết bị và Firebase Firestore.
+                  {currentUser.role === 'student'
+                    ? `Em đang truy cập phân quyền Học sinh: Lớp ${currentUser.className} - ${currentUser.school}. Chỉ tham gia các menu học tập.`
+                    : 'Dữ liệu bài thi & điểm số được tự động đồng bộ thời gian thực hai chiều giữa thiết bị và Firebase Firestore.'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
-              <button
-                type="button"
-                onClick={() => handleOpenAccountModal('edit_profile')}
-                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
-              >
-                <span>✏️ Sửa thông tin cá nhân</span>
-              </button>
+            {/* Banner action buttons: Strict separation between student and teacher */}
+            {currentUser.role === 'student' ? (
+              <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('student_portal')}
+                  className={`px-3 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer ${
+                    currentTab === 'student_portal' ? 'bg-emerald-600 text-white' : 'bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-50'
+                  }`}
+                >
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span>Làm bài thi</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={async () => {
-                  const res = await StorageService.syncWithCloud();
-                  setExams(StorageService.getExams());
-                  setSubmissions(StorageService.getSubmissions());
-                  alert(`Đồng bộ thành công! Hiện có ${res.examCount} đề thi, ${res.submissionCount} bài làm và ${res.userCount} tài khoản trên Cloud.`);
-                }}
-                className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200 shadow-2xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
-                <span>Đồng bộ ngay</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('student_study')}
+                  className={`px-3 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer ${
+                    currentTab === 'student_study' ? 'bg-blue-600 text-white' : 'bg-white text-blue-800 border border-blue-200 hover:bg-blue-50'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Góc ôn luyện</span>
+                </button>
 
-              {userRole === 'teacher' && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('student_history')}
+                  className={`px-3 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer ${
+                    currentTab === 'student_history' ? 'bg-amber-600 text-white' : 'bg-white text-amber-800 border border-amber-200 hover:bg-amber-50'
+                  }`}
+                >
+                  <Award className="w-3.5 h-3.5" />
+                  <span>Bảng điểm</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenAccountModal('edit_profile')}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
+                >
+                  <span>✏️ Sửa thông tin</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => handleOpenAccountModal('edit_profile')}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
+                >
+                  <span>✏️ Sửa thông tin cá nhân</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await StorageService.syncWithCloud();
+                    setExams(StorageService.getExams());
+                    setSubmissions(StorageService.getSubmissions());
+                    alert(`Đồng bộ thành công! Hiện có ${res.examCount} đề thi, ${res.submissionCount} bài làm và ${res.userCount} tài khoản trên Cloud.`);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200 shadow-2xs flex items-center gap-1.5 transition-all text-xs cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Đồng bộ ngay</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setCurrentTab('create_exam')}
@@ -333,16 +405,16 @@ export default function App() {
                 >
                   <span>+ Úp đề Word/PDF</span>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* ======================================================= */}
-          {/* CONDITIONAL PORTALS: TEACHER VS STUDENT                 */}
+          {/* CONDITIONAL PORTALS: STRICT STUDENT LEARNING MENUS      */}
           {/* ======================================================= */}
 
-          {/* VIEW: STUDENT PORTAL (LÀM BÀI, ÔN TẬP, LỊCH SỬ) */}
-          {(userRole === 'student' || currentTab === 'student_portal' || currentTab === 'student_study' || currentTab === 'student_history') && currentTab !== 'student_room' && (
+          {/* VIEW: STUDENT PORTAL (LÀM BÀI, ÔN TẬP, LỊCH SỬ) - ALWAYS FOR STUDENTS */}
+          {(currentUser.role === 'student' || userRole === 'student' || currentTab === 'student_portal' || currentTab === 'student_study' || currentTab === 'student_history') && currentTab !== 'student_room' && (
             <StudentPortal
               currentUser={currentUser}
               exams={exams}
@@ -353,8 +425,8 @@ export default function App() {
             />
           )}
 
-          {/* VIEW: TEACHER HOME OVERVIEW */}
-          {userRole === 'teacher' && currentTab === 'home' && (
+          {/* VIEW: TEACHER HOME OVERVIEW - ONLY FOR TEACHER */}
+          {currentUser.role === 'teacher' && userRole === 'teacher' && currentTab === 'home' && (
             <HomeOverview
               exams={exams}
               onNavigateTab={setCurrentTab}
@@ -363,16 +435,16 @@ export default function App() {
             />
           )}
 
-          {/* VIEW: EXAM CREATOR (AZOTA STYLE WITH GRADE RESTRICTION) */}
-          {userRole === 'teacher' && currentTab === 'create_exam' && (
+          {/* VIEW: EXAM CREATOR - ONLY FOR TEACHER */}
+          {currentUser.role === 'teacher' && userRole === 'teacher' && currentTab === 'create_exam' && (
             <ExamCreator
               onSaveExam={handleSaveExam}
               onCancel={() => setCurrentTab('home')}
             />
           )}
 
-          {/* VIEW: EXAM MANAGEMENT & GRADEBOOK */}
-          {userRole === 'teacher' && currentTab === 'manage_exams' && (
+          {/* VIEW: EXAM MANAGEMENT & GRADEBOOK - ONLY FOR TEACHER */}
+          {currentUser.role === 'teacher' && userRole === 'teacher' && currentTab === 'manage_exams' && (
             <ExamManagement
               exams={exams}
               submissions={submissions}
@@ -394,7 +466,7 @@ export default function App() {
                 onFinishSubmission={handleFinishSubmission}
                 onExitRoom={() => {
                   setActiveExamForStudent(null);
-                  setCurrentTab(userRole === 'student' ? 'student_portal' : 'home');
+                  setCurrentTab(currentUser.role === 'student' ? 'student_portal' : 'home');
                 }}
               />
             ) : (
@@ -405,7 +477,7 @@ export default function App() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setCurrentTab(userRole === 'student' ? 'student_portal' : 'home')}
+                  onClick={() => setCurrentTab('student_portal')}
                   className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold"
                 >
                   Quay lại danh sách đề
@@ -420,11 +492,11 @@ export default function App() {
           {/* VIEW: 360 DEGREE VIRTUAL CLASSROOM */}
           {currentTab === 'vr360' && <Virtual360Space />}
 
-          {/* VIEW: TEACHER AI ASSISTANT */}
-          {currentTab === 'ai_assistant' && <AIAssistantModal />}
+          {/* VIEW: TEACHER AI ASSISTANT - ONLY FOR TEACHER */}
+          {currentUser.role === 'teacher' && currentTab === 'ai_assistant' && <AIAssistantModal />}
 
-          {/* VIEW: FIREBASE & VERCEL DEPLOYMENT GUIDE */}
-          {currentTab === 'firebase_deploy' && <FirebaseDeployGuide />}
+          {/* VIEW: FIREBASE & VERCEL DEPLOYMENT GUIDE - ONLY FOR TEACHER */}
+          {currentUser.role === 'teacher' && currentTab === 'firebase_deploy' && <FirebaseDeployGuide />}
         </main>
       )}
 
@@ -493,14 +565,18 @@ export default function App() {
                 Đăng nhập
               </button>
             )}
-            <span>•</span>
-            <button
-              type="button"
-              onClick={() => setCurrentTab('firebase_deploy')}
-              className="text-orange-600 hover:text-orange-700 font-bold hover:underline cursor-pointer"
-            >
-              Vercel & Firebase
-            </button>
+            {currentUser?.role === 'teacher' && (
+              <>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab('firebase_deploy')}
+                  className="text-orange-600 hover:text-orange-700 font-bold hover:underline cursor-pointer"
+                >
+                  Vercel & Firebase
+                </button>
+              </>
+            )}
           </div>
         </div>
       </footer>
