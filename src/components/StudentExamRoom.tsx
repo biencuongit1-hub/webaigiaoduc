@@ -18,7 +18,10 @@ import {
   Upload,
   FileText,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  Image as ImageIcon,
+  ZoomIn,
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Exam, Question, ExamSubmission, ViolationLog, UserProfile } from '../types';
@@ -65,6 +68,7 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
 
   // Final Submission object
   const [submissionResult, setSubmissionResult] = useState<ExamSubmission | null>(null);
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   // Filter sections inside exam room
   const [activeSection, setActiveSection] = useState<'all' | 'mc' | 'essay'>('all');
@@ -469,33 +473,78 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                     {currentQ.text}
                   </div>
 
+                  {/* Question Image (Diagram, Graph, Formula, Figure) */}
+                  {currentQ.image && (
+                    <div className="my-3 p-2 bg-slate-50 rounded-2xl border border-slate-200 inline-block max-w-full">
+                      <div className="relative group cursor-pointer" onClick={() => setZoomedImage(currentQ.image || null)}>
+                        <img
+                          src={currentQ.image}
+                          alt={`Hình minh họa câu ${currentQ.order}`}
+                          className="max-h-72 w-auto rounded-xl object-contain shadow-xs bg-white"
+                        />
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center text-white text-xs font-bold gap-1 backdrop-blur-2xs">
+                          <ZoomIn className="w-4 h-4" />
+                          <span>Phóng to hình ảnh</span>
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-slate-400 mt-1 block text-center">
+                        🔍 Nhấp vào hình ảnh để xem kích thước lớn
+                      </span>
+                    </div>
+                  )}
+
                   {/* CASE 1: MULTIPLE CHOICE OPTIONS */}
                   {currentQ.type !== 'essay' && (
                     <div className="space-y-3">
-                      {(currentQ.options || []).map((opt) => {
+                      {(currentQ.options || []).map((opt, optIdx) => {
                         const isSelected = answers[currentQ.id] === opt.id;
                         return (
                           <div
-                            key={opt.id}
+                            key={`${currentQ.id}_opt_${opt.id}_${optIdx}`}
                             onClick={() => setAnswers({ ...answers, [currentQ.id]: opt.id })}
-                            className={`flex items-center gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+                            className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
                               isSelected
                                 ? 'border-blue-600 bg-blue-50/70 shadow-xs ring-2 ring-blue-500/20'
                                 : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
                             }`}
                           >
-                            <div
-                              className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 transition-colors ${
-                                isSelected
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-slate-100 text-slate-700 border border-slate-300'
-                              }`}
-                            >
-                              {opt.id}
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 transition-colors ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-slate-100 text-slate-700 border border-slate-300'
+                                }`}
+                              >
+                                {opt.id}
+                              </div>
+                              <span className={`text-sm sm:text-base font-medium ${isSelected ? 'text-blue-950 font-bold' : 'text-slate-800'}`}>
+                                {opt.text}
+                              </span>
                             </div>
-                            <span className={`text-sm sm:text-base font-medium ${isSelected ? 'text-blue-950 font-bold' : 'text-slate-800'}`}>
-                              {opt.text}
-                            </span>
+
+                            {/* Option image if present */}
+                            {opt.image && (
+                              <div className="mt-3 ml-10 p-1.5 bg-white rounded-xl border border-slate-200 inline-block max-w-full">
+                                <div
+                                  className="relative group cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setZoomedImage(opt.image || null);
+                                  }}
+                                >
+                                  <img
+                                    src={opt.image}
+                                    alt={`Hình phương án ${opt.id}`}
+                                    className="max-h-48 w-auto rounded-lg object-contain shadow-2xs"
+                                  />
+                                  <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center text-white text-xs font-bold gap-1 backdrop-blur-2xs">
+                                    <ZoomIn className="w-3.5 h-3.5" />
+                                    <span>Phóng to</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -588,7 +637,7 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                         Phần Trắc Nghiệm ({mcQuestions.length} câu)
                       </div>
                       <div className="grid grid-cols-5 gap-1.5">
-                        {mcQuestions.map((q) => {
+                        {mcQuestions.map((q, idx) => {
                           const originalIdx = activeQuestions.findIndex(item => item.id === q.id);
                           const isCurrent = currentQuestionIndex === originalIdx;
                           const isDone = Boolean(answers[q.id]);
@@ -596,7 +645,7 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
 
                           return (
                             <button
-                              key={q.id}
+                              key={`pal_mc_${q.id}_${idx}`}
                               type="button"
                               onClick={() => setCurrentQuestionIndex(originalIdx)}
                               className={`h-9 rounded-xl font-bold text-xs flex items-center justify-center transition-all ${
@@ -625,7 +674,7 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                         Phần Tự Luận ({essayQuestions.length} câu)
                       </div>
                       <div className="grid grid-cols-5 gap-1.5">
-                        {essayQuestions.map((q) => {
+                        {essayQuestions.map((q, idx) => {
                           const originalIdx = activeQuestions.findIndex(item => item.id === q.id);
                           const isCurrent = currentQuestionIndex === originalIdx;
                           const isDone = Boolean(answers[q.id] && answers[q.id].trim() !== '');
@@ -633,7 +682,7 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
 
                           return (
                             <button
-                              key={q.id}
+                              key={`pal_es_${q.id}_${idx}`}
                               type="button"
                               onClick={() => setCurrentQuestionIndex(originalIdx)}
                               className={`h-9 rounded-xl font-bold text-xs flex items-center justify-center transition-all ${
@@ -888,7 +937,7 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                   if (isEssay) {
                     return (
                       <div
-                        key={q.id}
+                        key={`res_es_${q.id}_${idx}`}
                         className="p-5 rounded-2xl border-2 border-purple-200 bg-purple-50/20 space-y-4"
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -905,6 +954,18 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                             Tự luận ({q.points || 1.5} điểm)
                           </span>
                         </div>
+
+                        {/* Question Image if present */}
+                        {q.image && (
+                          <div className="my-2 p-1.5 bg-white rounded-xl border border-slate-200 inline-block">
+                            <img
+                              src={q.image}
+                              alt="Hình minh họa"
+                              className="max-h-56 w-auto rounded-lg object-contain cursor-pointer"
+                              onClick={() => setZoomedImage(q.image || null)}
+                            />
+                          </div>
+                        )}
 
                         {/* Student essay answer */}
                         <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-1">
@@ -942,7 +1003,7 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
 
                   return (
                     <div
-                      key={q.id}
+                      key={`res_mc_${q.id}_${idx}`}
                       className={`p-5 rounded-2xl border-2 space-y-3 ${
                         isCorrect
                           ? 'border-emerald-200 bg-emerald-50/20'
@@ -984,16 +1045,28 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                         </span>
                       </div>
 
+                      {/* Question Image if present */}
+                      {q.image && (
+                        <div className="my-2 p-1.5 bg-white rounded-xl border border-slate-200 inline-block">
+                          <img
+                            src={q.image}
+                            alt="Hình minh họa"
+                            className="max-h-56 w-auto rounded-lg object-contain cursor-pointer"
+                            onClick={() => setZoomedImage(q.image || null)}
+                          />
+                        </div>
+                      )}
+
                       {/* Options */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
-                        {(q.options || []).map((opt) => {
+                        {(q.options || []).map((opt, optIdx) => {
                           const wasSelected = studentAns === opt.id;
                           const isRight = q.correctOptionId === opt.id;
 
                           return (
                             <div
-                              key={opt.id}
-                              className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                              key={`${q.id}_res_opt_${opt.id}_${optIdx}`}
+                              className={`p-2.5 rounded-xl border space-y-2 ${
                                 isRight
                                   ? 'bg-emerald-100/70 border-emerald-400 font-bold text-emerald-950'
                                   : wasSelected
@@ -1001,19 +1074,33 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                                   : 'bg-white border-slate-200 text-slate-600'
                               }`}
                             >
-                              <span className="w-5 h-5 rounded-full bg-slate-200 font-bold flex items-center justify-center text-[10px]">
-                                {opt.id}
-                              </span>
-                              <span className="truncate">{opt.text}</span>
-                              {isRight && (
-                                <span className="ml-auto text-[10px] font-bold text-emerald-700 uppercase">
-                                  Đáp án đúng
+                              <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-slate-200 font-bold flex items-center justify-center text-[10px] shrink-0">
+                                  {opt.id}
                                 </span>
-                              )}
-                              {wasSelected && !isRight && (
-                                <span className="ml-auto text-[10px] font-bold text-rose-700 uppercase">
-                                  Bạn chọn
-                                </span>
+                                <span className="truncate">{opt.text}</span>
+                                {isRight && (
+                                  <span className="ml-auto text-[10px] font-bold text-emerald-700 uppercase shrink-0">
+                                    Đáp án đúng
+                                  </span>
+                                )}
+                                {wasSelected && !isRight && (
+                                  <span className="ml-auto text-[10px] font-bold text-rose-700 uppercase shrink-0">
+                                    Bạn chọn
+                                  </span>
+                                )}
+                              </div>
+
+                              {opt.image && (
+                                <div className="ml-7 p-1 bg-white rounded-lg border border-slate-200 inline-block">
+                                  <img
+                                    src={opt.image}
+                                    alt={`Hình phương án ${opt.id}`}
+                                    className="max-h-24 w-auto rounded-md object-contain cursor-pointer shadow-2xs"
+                                    onClick={() => setZoomedImage(opt.image || null)}
+                                    title="Nhấp để phóng to"
+                                  />
+                                </div>
                               )}
                             </div>
                           );
@@ -1033,6 +1120,29 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Lightbox Zoom Image Modal */}
+      {zoomedImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setZoomedImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl p-2 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setZoomedImage(null)}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white flex items-center justify-center transition-colors cursor-pointer z-10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={zoomedImage}
+              alt="Hình ảnh phóng to"
+              className="max-h-[85vh] w-auto mx-auto object-contain rounded-xl"
+            />
+          </div>
         </div>
       )}
     </div>

@@ -30,7 +30,7 @@ export interface NavbarProps {
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
   currentUser: UserProfile | null;
-  onOpenAccountModal: (tab?: 'register' | 'login' | 'forgot_password' | 'switch' | 'profile' | 'edit_profile') => void;
+  onOpenAccountModal: (tab?: 'register' | 'login' | 'forgot_password' | 'profile' | 'edit_profile') => void;
   onLogout?: () => void;
   onOpenExamByCode?: () => void;
   examsCount?: number;

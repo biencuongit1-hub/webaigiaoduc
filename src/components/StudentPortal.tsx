@@ -643,7 +643,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
                     {/* Options */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                      {q.options.map((opt) => {
+                      {q.options.map((opt, optIdx) => {
                         const isChosen = selectedOpt === opt.id;
                         let optStyle = 'border-slate-200 bg-white hover:border-blue-300';
                         if (isChosen) {
@@ -652,7 +652,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
                         return (
                           <button
-                            key={opt.id}
+                            key={`${q.id}_opt_${opt.id}_${optIdx}`}
                             type="button"
                             onClick={() => setPracticeAnswers(prev => ({ ...prev, [q.id]: opt.id }))}
                             className={`p-3 rounded-xl border text-xs text-left transition-all flex items-center gap-2 cursor-pointer ${optStyle}`}
@@ -944,7 +944,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                       const studentAnswer = inspectingGradedSub.sub.answers[q.id];
 
                       return (
-                        <div key={q.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2">
+                        <div key={`${q.id}_${idx}`} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-lg">
                               Câu {q.order || idx + 1} (Tự luận - Tối đa {q.points}đ)

@@ -34,7 +34,7 @@ export interface UserAccountModalProps {
   currentUser: UserProfile | null;
   onUserChange: (user: UserProfile) => void;
   onLogout?: () => void;
-  initialTab?: 'register' | 'login' | 'forgot_password' | 'switch' | 'profile' | 'edit_profile';
+  initialTab?: 'register' | 'login' | 'forgot_password' | 'profile' | 'edit_profile';
 }
 
 export const UserAccountModal: React.FC<UserAccountModalProps> = ({
@@ -45,7 +45,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
   onLogout,
   initialTab = 'profile'
 }) => {
-  const [activeTab, setActiveTab] = useState<'register' | 'login' | 'forgot_password' | 'switch' | 'profile' | 'edit_profile'>(
+  const [activeTab, setActiveTab] = useState<'register' | 'login' | 'forgot_password' | 'profile' | 'edit_profile'>(
     currentUser ? initialTab : 'login'
   );
   const [role, setRole] = useState<UserRole>('student');
@@ -59,7 +59,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
   const [fullName, setFullName] = useState('');
   const [grade, setGrade] = useState('Lớp 9');
   const [className, setClassName] = useState('9A1');
-  const [school, setSchool] = useState('Trường THCS & THPT Đoàn Thượng');
+  const [school, setSchool] = useState('Trường THCS Nguyễn Đôn');
   const [birthYear, setBirthYear] = useState('2010');
   const [subject, setSubject] = useState('Toán học');
   const [studentId, setStudentId] = useState('');
@@ -308,17 +308,6 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
     }
   };
 
-  // 6. Select existing user directly
-  const handleSelectExistingUser = (u: UserProfile) => {
-    StorageService.setCurrentUser(u);
-    onUserChange(u);
-    setSuccessMsg(`Đã chuyển sang tài khoản "${u.fullName}" (${u.role === 'teacher' ? 'Giáo viên' : 'Học sinh'})!`);
-    setTimeout(() => {
-      setSuccessMsg('');
-      onClose();
-    }, 1000);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-200">
@@ -443,22 +432,6 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
               }`}
             >
               Quên mật khẩu?
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('switch');
-                setErrorMsg('');
-                setSuccessMsg('');
-              }}
-              className={`flex-1 py-1.5 px-2.5 rounded-lg font-bold transition-all text-center whitespace-nowrap cursor-pointer ${
-                activeTab === 'switch'
-                  ? 'bg-white text-blue-900 shadow-xs'
-                  : 'text-blue-100 hover:text-white'
-              }`}
-            >
-              Đổi tài khoản ({allUsers.length})
             </button>
           </div>
         </div>
@@ -764,15 +737,6 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Thay đổi thông tin cá nhân</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('switch')}
-                    className="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span>Đổi tài khoản</span>
-                  </button>
                 </div>
 
                 {onLogout && (
@@ -998,7 +962,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                       required
                       value={school}
                       onChange={(e) => setSchool(e.target.value)}
-                      placeholder="VD: THCS & THPT Đoàn Thượng"
+                      placeholder="VD: Trường THCS Nguyễn Đôn"
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs"
                     />
                   </div>
@@ -1191,76 +1155,6 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                   </button>
                 </form>
               )}
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* TAB: SWITCH (DANH SÁCH TÀI KHOẢN MẪU)                    */}
-          {/* ======================================================== */}
-          {activeTab === 'switch' && (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">
-                Chọn tài khoản để đăng nhập hoặc trải nghiệm ngay:
-              </p>
-
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {allUsers.map((u) => {
-                  const isCurrent = currentUser && u.id === currentUser.id;
-                  const isTeacher = u.role === 'teacher';
-
-                  return (
-                    <div
-                      key={u.id}
-                      onClick={() => handleSelectExistingUser(u)}
-                      className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 cursor-pointer ${
-                        isCurrent
-                          ? 'border-blue-600 bg-blue-50/70 shadow-xs'
-                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-white font-bold text-xs ${
-                          isTeacher ? 'bg-blue-600' : 'bg-emerald-600'
-                        }`}>
-                          {isTeacher ? <School className="w-5 h-5" /> : <GraduationCap className="w-5 h-5" />}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-slate-900 text-xs truncate">
-                              {u.fullName}
-                            </span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                              isTeacher ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {isTeacher ? 'Giáo viên' : 'Học sinh'}
-                            </span>
-                            {u.username && (
-                              <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
-                                @{u.username}
-                              </span>
-                            )}
-                            {isCurrent && (
-                              <span className="text-[10px] font-bold text-blue-600 bg-white border border-blue-200 px-1 py-0.2 rounded">
-                                Đang chọn
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                            {u.school} • {u.grade} ({u.className}) {u.phoneNumber && `• SĐT: ${u.phoneNumber}`}
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 shrink-0"
-                      >
-                        Chọn
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           )}
         </div>

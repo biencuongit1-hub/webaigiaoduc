@@ -17,7 +17,24 @@ export interface ParseResult {
  * - Detailed explanations section ("HƯỚNG DẪN GIẢI CHI TIẾT" / "GIẢI CHI TIẾT") mapped directly to questions
  * - Standard Vietnamese markers ("Câu 1:", "Câu 1.", "Bài 1:", "Question 1:")
  */
-export function parseRawExamText(rawText: string): ParseResult {
+export function parseRawExamText(
+  rawText: string, 
+  optionsOrImageMap?: Record<string, string> | { imageMap?: Record<string, string>; defaultImages?: string[] },
+  defaultImagesArg?: string[]
+): ParseResult {
+  let imageMap: Record<string, string> | undefined = undefined;
+  let defaultImages: string[] | undefined = undefined;
+
+  if (optionsOrImageMap) {
+    if ('imageMap' in optionsOrImageMap || 'defaultImages' in optionsOrImageMap) {
+      const opts = optionsOrImageMap as { imageMap?: Record<string, string>; defaultImages?: string[] };
+      imageMap = opts.imageMap;
+      defaultImages = opts.defaultImages;
+    } else {
+      imageMap = optionsOrImageMap as Record<string, string>;
+      defaultImages = defaultImagesArg;
+    }
+  }
   const errors: string[] = [];
   if (!rawText.trim()) {
     return {
@@ -34,6 +51,8 @@ export function parseRawExamText(rawText: string): ParseResult {
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/([^\n])\s+(\(\s*(?:NB|TH|VD|VDC|VC)\s*\)[\.:\s\-–—]+)/gi, '$1\n$2')
+    .replace(/([^\n])\s+((?:Câu|Question|Bài)\s*\d+)/gi, '$1\n$2')
     .trim();
 
   // 1. Separate "HƯỚNG DẪN GIẢI CHI TIẾT" / "LỜI GIẢI CHI TIẾT" / "GIẢI CHI TIẾT" if present
@@ -70,10 +89,12 @@ export function parseRawExamText(rawText: string): ParseResult {
   // 3. Extract Detailed Explanations by Question number from solutionText
   const explanationMap: Record<number, string> = {};
   if (solutionText) {
-    const solBlocks = solutionText.matchAll(/(?:^|\n)\s*(?:Câu|Question|Bài)\s*(\d+)[\.:\s\-–—]([\s\S]*?)(?=(?:\n\s*(?:Câu|Question|Bài)\s*\d+[\.:\s\-–—]|$))/gi);
+    const solBlocks = solutionText.matchAll(/(?:^|\n)\s*(?:(?:(?:Câu|Question|Bài)\s*(\d+)|(\d+))\s*(?:\([^)]{1,25}\)|\[[^\]]{1,25}\])?\s*[\.:\s\-–—]+)([\s\S]*?)(?=(?:\n\s*(?:(?:(?:Câu|Question|Bài)\s*\d+|\d+)\s*(?:\([^)]{1,25}\)|\[[^\]]{1,25}\])?\s*[\.:\s\-–—]+)|$))/gi);
     for (const match of solBlocks) {
-      const qNum = parseInt(match[1], 10);
-      const solContent = match[2].trim();
+      const qNumStr = match[1] || match[2];
+      const qNum = parseInt(qNumStr, 10);
+      let solContent = match[3].trim();
+      solContent = solContent.replace(/(?:---+|\*\*\*+|===+)?\s*(?:HẾT|THE\s*END|CÁN\s*BỘ\s*COI\s*THI|THÍ\s*SINH)[\s\S]*$/i, '').trim();
       if (!isNaN(qNum) && solContent) {
         explanationMap[qNum] = solContent;
 
@@ -129,8 +150,11 @@ export function parseRawExamText(rawText: string): ParseResult {
   }
 
   // 6. Parse questions
-  const parsedMcQuestions: Question[] = parseMultipleChoiceBlocks(mcText, answerKeyMap, explanationMap);
-  const parsedEssayQuestions: Question[] = parseEssayBlocks(essayText, parsedMcQuestions.length, explanationMap);
+  const { mcQuestions: parsedMcQuestions, fallbackEssayQuestions } = parseMultipleChoiceBlocks(mcText, answerKeyMap, explanationMap, imageMap, defaultImages);
+  const parsedEssayQuestions: Question[] = [
+    ...fallbackEssayQuestions,
+    ...parseEssayBlocks(essayText, parsedMcQuestions.length + fallbackEssayQuestions.length, explanationMap, imageMap, defaultImages)
+  ];
 
   const allQuestions: Question[] = [...parsedMcQuestions, ...parsedEssayQuestions];
 
@@ -217,16 +241,110 @@ export function parseRawExamText(rawText: string): ParseResult {
 }
 
 /**
+ * Helper to parse a single Essay Question Block
+ */
+function parseSingleEssayBlock(
+  blockContent: string,
+  autoOrder: number,
+  qNum: number,
+  levelTag?: string,
+  explanationMap?: Record<number, string>,
+  imageMap?: Record<string, string>,
+  defaultImages?: string[]
+): Question | null {
+  // Skip section header title lines
+  if (/^(?:PHẦN\s*)?TỰ\s*LUẬN/i.test(blockContent) && blockContent.length < 50) {
+    return null;
+  }
+
+  // Skip multiple choice questions that may have leaked
+  if (/[A-D][\.:\)]/i.test(blockContent) && blockContent.includes('A.') && blockContent.includes('B.')) {
+    return null;
+  }
+
+  let explicitPoints = 1.5;
+  const pointsMatch = blockContent.match(/\(([\d\.,]+)\s*(?:đ|điểm)\)/i);
+  if (pointsMatch) {
+    const parsed = parseFloat(pointsMatch[1].replace(',', '.'));
+    if (!isNaN(parsed) && parsed > 0) explicitPoints = parsed;
+  }
+
+  // Extract Model Answer / Rubric
+  let modelAnswer = explanationMap?.[qNum] || '';
+  let questionText = blockContent;
+
+  const answerSplitMatch = blockContent.match(/(?:(?:Đáp\s*án|Hướng\s*dẫn\s*chấm|Biểu\s*điểm|Barem|Lời\s*giải)[\s:_\-]*)([\s\S]*)/i);
+  if (answerSplitMatch) {
+    if (!modelAnswer) {
+      modelAnswer = answerSplitMatch[1].trim();
+    }
+    questionText = blockContent.slice(0, answerSplitMatch.index).trim();
+  }
+
+  // Clean question title and trailing exam footer
+  questionText = questionText.replace(/^\(([\d\.,]+)\s*(?:đ|điểm)\)[\s:\-]*/i, '').trim();
+  questionText = questionText.replace(/(?:---+|\*\*\*+|===+)?\s*(?:HẾT|THE\s*END|CÁN\s*BỘ\s*COI\s*THI|THÍ\s*SINH\s*KHÔNG\s*ĐƯỢC\s*SỬ\s*DỤNG\s*TÀI\s*LIỆU)[\s\S]*$/i, '').trim();
+
+  if (levelTag && !questionText.startsWith('(') && !questionText.startsWith('[')) {
+    questionText = `(${levelTag}) ${questionText}`;
+  }
+
+  // Extract essay question image if present
+  let essayImage: string | undefined = undefined;
+  const essayTokenMatch = questionText.match(/\[(HÌNH_ẢNH_?\d+|IMAGE_?\d+|IMG_?\d+|HÌNH_ẢNH_ĐỀ_THI)\]/i);
+  if (essayTokenMatch) {
+    essayImage = resolveImageToken(essayTokenMatch[0], imageMap, defaultImages);
+    if (essayImage) {
+      questionText = questionText.replace(essayTokenMatch[0], '').trim();
+    }
+  }
+
+  if (!essayImage) {
+    const essayImgMatch = questionText.match(/\[(?:HÌNH_ẢNH|IMAGE|HÌNH)\s*:\s*([^\]]+)\]/i) ||
+                          questionText.match(/!\[.*?\]\(([^)]+)\)/i);
+    if (essayImgMatch) {
+      const candidate = essayImgMatch[1].trim();
+      if (candidate.startsWith('data:') || candidate.startsWith('http')) {
+        essayImage = candidate;
+      } else {
+        essayImage = resolveImageToken(candidate, imageMap, defaultImages);
+      }
+      questionText = questionText.replace(essayImgMatch[0], '').trim();
+    }
+  }
+
+  if (questionText.length > 0) {
+    return {
+      id: `q_essay_${autoOrder}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      order: autoOrder,
+      type: 'essay',
+      text: questionText,
+      options: [],
+      modelAnswer: modelAnswer || 'Đáp án mẫu & Biểu điểm tự luận do giáo viên cung cấp.',
+      explanation: modelAnswer || undefined,
+      points: explicitPoints,
+      image: essayImage
+    };
+  }
+
+  return null;
+}
+
+/**
  * Parse Multiple Choice Question Blocks
  */
 function parseMultipleChoiceBlocks(
   text: string, 
   answerKeyMap: Record<number, string>, 
-  explanationMap: Record<number, string>
-): Question[] {
-  const questions: Question[] = [];
-  // Regex to split on "Câu 1:", "Câu 1.", "Question 1:", "Bài 1:"
-  const blockRegex = /(?:^|\n)(?:(?:Câu|Question|Bài)\s*(\d+)[\.:\s\-–—]|(\d+)[\.:]\s+)([\s\S]*?)(?=(?:\n(?:(?:Câu|Question|Bài)\s*\d+[\.:\s\-–—]|\d+[\.:]\s+)|$))/gi;
+  explanationMap: Record<number, string>,
+  imageMap?: Record<string, string>,
+  defaultImages?: string[]
+): { mcQuestions: Question[]; fallbackEssayQuestions: Question[] } {
+  const mcQuestions: Question[] = [];
+  const fallbackEssayQuestions: Question[] = [];
+
+  // Regex to split on "Câu 1:", "Câu 1(NB):", "Câu 1.", "Question 1:", "Bài 1:", "1.", or standalone tags like "(NB):", "[VD]:"
+  const blockRegex = /(?:^|\n)\s*(?:(?:(?:(?:Câu|Question|Bài)\s*(\d+)|(\d+))\s*(?:\(([A-Za-z0-9\s]{1,15})\)|\[([A-Za-z0-9\s]{1,15})\])?|(?:\(([A-Za-z0-9\s]{1,15})\)|\[([A-Za-z0-9\s]{1,15})\]))\s*[\.:\s\-–—]+)([\s\S]*?)(?=(?:\n\s*(?:(?:(?:(?:Câu|Question|Bài)\s*\d+|\d+)\s*(?:\([A-Za-z0-9\s]{1,15}\)|\[[A-Za-z0-9\s]{1,15}\])?|(?:\([A-Za-z0-9\s]{1,15}\)|\[[A-Za-z0-9\s]{1,15}\]))\s*[\.:\s\-–—]+)|$))/gi;
 
   let match: RegExpExecArray | null;
   let autoOrder = 1;
@@ -234,7 +352,8 @@ function parseMultipleChoiceBlocks(
   while ((match = blockRegex.exec(text)) !== null) {
     const qNumStr = match[1] || match[2];
     const qNum = qNumStr ? parseInt(qNumStr, 10) : autoOrder;
-    const blockContent = match[3].trim();
+    const levelTag = (match[3] || match[4] || match[5] || match[6] || '').trim();
+    const blockContent = match[7].trim();
 
     // Skip section header lines if captured as question
     if (/^(?:PHẦN\s*)?(?:TRẮC\s*NGHIỆM|TỰ\s*LUẬN)/i.test(blockContent) && !/[A-D][\.:\)]/i.test(blockContent)) {
@@ -242,27 +361,93 @@ function parseMultipleChoiceBlocks(
     }
 
     // Check if block has options A, B, C, D
-    if (/[A-D][\.:\)]\s+/i.test(blockContent)) {
+    if (/[A-D][\.:\)]/i.test(blockContent)) {
       const externalExpl = explanationMap[qNum];
-      const parsedQ = parseSingleMultipleChoiceBlock(blockContent, qNum, answerKeyMap[qNum], externalExpl);
+      const parsedQ = parseSingleMultipleChoiceBlock(blockContent, qNum, answerKeyMap[qNum], externalExpl, imageMap, defaultImages, levelTag);
       if (parsedQ) {
-        questions.push(parsedQ);
+        mcQuestions.push(parsedQ);
+        autoOrder++;
+      }
+    } else {
+      const parsedEssay = parseSingleEssayBlock(blockContent, autoOrder, qNum, levelTag, explanationMap, imageMap, defaultImages);
+      if (parsedEssay) {
+        fallbackEssayQuestions.push(parsedEssay);
         autoOrder++;
       }
     }
   }
 
-  return questions;
+  return { mcQuestions, fallbackEssayQuestions };
+}
+
+// Helper function to resolve image token from imageMap
+function resolveImageToken(
+  token: string, 
+  imageMap?: Record<string, string>, 
+  defaultImages?: string[]
+): string | undefined {
+  if (!imageMap && (!defaultImages || defaultImages.length === 0)) return undefined;
+
+  const cleanToken = token.trim();
+  if (imageMap) {
+    if (imageMap[cleanToken]) return imageMap[cleanToken];
+
+    // Case and spacing insensitive lookup
+    const normalizedKey = cleanToken.toLowerCase().replace(/\s+/g, '_');
+    for (const [k, v] of Object.entries(imageMap)) {
+      const normK = k.toLowerCase().replace(/\s+/g, '_');
+      if (normK === normalizedKey || normK.replace(/[\[\]]/g, '') === normalizedKey.replace(/[\[\]]/g, '')) {
+        return v;
+      }
+    }
+
+    // Try number index if token is like [HÌNH_ẢNH_1]
+    const numMatch = cleanToken.match(/\d+/);
+    if (numMatch) {
+      const idx = parseInt(numMatch[0], 10);
+      const possibleKey1 = `[HÌNH_ẢNH_${idx}]`;
+      const possibleKey2 = `[IMAGE_${idx}]`;
+      if (imageMap[possibleKey1]) return imageMap[possibleKey1];
+      if (imageMap[possibleKey2]) return imageMap[possibleKey2];
+      
+      const values = Object.values(imageMap);
+      if (idx > 0 && idx <= values.length) {
+        return values[idx - 1];
+      }
+    }
+  }
+
+  if (defaultImages && defaultImages.length > 0) {
+    const numMatch = cleanToken.match(/\d+/);
+    if (numMatch) {
+      const idx = parseInt(numMatch[0], 10);
+      if (idx > 0 && idx <= defaultImages.length) {
+        return defaultImages[idx - 1];
+      }
+    }
+    return defaultImages[0];
+  }
+
+  return undefined;
 }
 
 function parseSingleMultipleChoiceBlock(
   block: string, 
   qOrder: number, 
   externalAnswer?: string,
-  externalExplanation?: string
+  externalExplanation?: string,
+  imageMap?: Record<string, string>,
+  defaultImages?: string[],
+  levelTag?: string
 ): Question | null {
+  // Normalize inline options that share a line: e.g. "A. x   B. y" -> separate lines
+  const normalizedBlock = block
+    .replace(/([^\n])\s{2,}(\*|\[x\])?\s*([A-D][.:\)])/g, '$1\n$2 $3')
+    .replace(/([^\n])\t+(\*|\[x\])?\s*([A-D][.:\)])/g, '$1\n$2 $3')
+    .replace(/([^\n\s][\.\?!;])\s+(\*|\[x\])?\s*([A-D][.:\)])/g, '$1\n$2 $3');
+
   // Option Regex to extract A., B., C., D.
-  const optionRegex = /(?:^|\n)\s*(\*|\[x\])?\s*([A-D])[.:\)]\s*([\s\S]*?)(?=(?:\n\s*(?:\*|\[x\])?\s*[A-D][.:\)]|\n\s*(?:Lời\s*giải|Hướng\s*dẫn|Giải\s*thích|Đáp\s*án|HD:)|\s*$))/gi;
+  const optionRegex = /(?:^|\n)\s*(\*|\[x\])?\s*([A-D])[.:\)]\s*([\s\S]*?)(?=(?:\n\s*(?:\*|\[x\])?\s*[A-D][.:\)]|\n\s*(?:Lời\s*giải|Hướng\s*dẫn|Giải\s*thích|Đáp\s*án|HD:)|\s*$))/g;
 
   let questionText = '';
   const options: QuestionOption[] = [];
@@ -271,50 +456,134 @@ function parseSingleMultipleChoiceBlock(
   let explicitPoints = 1;
 
   // Check explicit points in question header: e.g. "(0.5 điểm)", "(0.5đ)", "(1đ)"
-  const pointsMatch = block.match(/\(([\d\.,]+)\s*(?:đ|điểm)\)/i);
+  const pointsMatch = normalizedBlock.match(/\(([\d\.,]+)\s*(?:đ|điểm)\)/i);
   if (pointsMatch) {
     const parsed = parseFloat(pointsMatch[1].replace(',', '.'));
     if (!isNaN(parsed) && parsed > 0) explicitPoints = parsed;
   }
 
   // Separate question text from options
-  const firstOptionMatch = block.search(/(?:^|\n)\s*(\*|\[x\])?\s*[A-D][.:\)]/i);
+  const firstOptionMatch = normalizedBlock.search(/(?:^|\n)\s*(\*|\[x\])?\s*[A-D][.:\)]/);
   if (firstOptionMatch !== -1) {
-    questionText = block.slice(0, firstOptionMatch).trim();
+    questionText = normalizedBlock.slice(0, firstOptionMatch).trim();
   } else {
-    questionText = block.trim();
+    questionText = normalizedBlock.trim();
   }
 
   // Clean trailing punctuation or points label from question text
   questionText = questionText.replace(/^\(([\d\.,]+)\s*(?:đ|điểm)\)[\s:\-]*/i, '').trim();
 
+  // If level tag provided, ensure cognitive level tag is nicely formatted
+  if (levelTag && !questionText.startsWith('(') && !questionText.startsWith('[')) {
+    questionText = `(${levelTag}) ${questionText}`;
+  }
+
+  // Extract question image if present in question text
+  let questionImage: string | undefined = undefined;
+
+  // Pattern 1: Token [HÌNH_ẢNH_1] or [IMAGE_1] from imageMap
+  const tokenMatch = questionText.match(/\[(HÌNH_ẢNH_?\d+|IMAGE_?\d+|IMG_?\d+|HÌNH_ẢNH_ĐỀ_THI)\]/i);
+  if (tokenMatch) {
+    const resolved = resolveImageToken(tokenMatch[0], imageMap, defaultImages);
+    if (resolved) {
+      questionImage = resolved;
+      questionText = questionText.replace(tokenMatch[0], '').trim();
+    }
+  }
+
+  // Pattern 2: [HÌNH_ẢNH: ...] or markdown image
+  if (!questionImage) {
+    const qImgMatch = questionText.match(/\[(?:HÌNH_ẢNH|IMAGE|HÌNH|ẢNH|HÌNH_VẼ)\s*:\s*([^\]]+)\]/i) ||
+                      questionText.match(/!\[.*?\]\(([^)]+)\)/i);
+    if (qImgMatch) {
+      const candidate = qImgMatch[1].trim();
+      if (candidate.startsWith('data:') || candidate.startsWith('http')) {
+        questionImage = candidate;
+      } else {
+        questionImage = resolveImageToken(candidate, imageMap, defaultImages);
+      }
+      questionText = questionText.replace(qImgMatch[0], '').trim();
+    }
+  }
+
+  // Pattern 3: OCR description tag like "[Hình ảnh minh họa: ...]"
+  if (!questionImage) {
+    const ocrFigureMatch = questionText.match(/\[(?:Hình\s*ảnh\s*minh\s*họa|Hình\s*vẽ|Sơ\s*đồ|Đồ\s*thị|Hình\s*bên)[^\]]*\]/i);
+    if (ocrFigureMatch) {
+      if (defaultImages && defaultImages.length > 0) {
+        questionImage = defaultImages[0];
+      }
+      questionText = questionText.replace(ocrFigureMatch[0], '').trim();
+    }
+  }
+
   // Inline answer or explanation
-  const answerMatch = block.match(/(?:Đáp\s*án\s*(?:đúng)?|Chọn)[\s:_\-]*([A-D])\b/i);
+  const answerMatch = normalizedBlock.match(/(?:Đáp\s*án\s*(?:đúng)?|Chọn)[\s:_\-]*([A-D])\b/i);
   if (answerMatch) {
     inlineCorrectOption = answerMatch[1].toUpperCase();
   }
 
-  const explMatch = block.match(/(?:Lời\s*giải|Hướng\s*dẫn\s*giải|Giải\s*thích|HD)[\s:_\-]*([\s\S]*?)(?:Đáp\s*án|$)/i);
+  const explMatch = normalizedBlock.match(/(?:Lời\s*giải|Hướng\s*dẫn\s*giải|Giải\s*thích|HD)[\s:_\-]*([\s\S]*?)(?:Đáp\s*án|$)/i);
   if (explMatch && !explanation) {
     explanation = explMatch[1].trim();
   }
 
   // Parse options
   let optMatch: RegExpExecArray | null;
-  while ((optMatch = optionRegex.exec(block)) !== null) {
+  while ((optMatch = optionRegex.exec(normalizedBlock)) !== null) {
     const isMarked = Boolean(optMatch[1]);
     const letter = optMatch[2].toUpperCase();
     let optText = optMatch[3].trim();
     optText = optText.replace(/(?:Lời\s*giải|Đáp\s*án)[\s\S]*$/i, '').trim();
+    optText = optText.replace(/(?:---+|\*\*\*+|===+)?\s*(?:HẾT|THE\s*END|CÁN\s*BỘ\s*COI\s*THI|THÍ\s*SINH\s*KHÔNG\s*ĐƯỢC\s*SỬ\s*DỤNG\s*TÀI\s*LIỆU)[\s\S]*$/i, '').trim();
+
+    // Extract image attached to this option
+    let optImage: string | undefined = undefined;
+
+    // Pattern 1: Token [HÌNH_ẢNH_X] from imageMap
+    const optTokenMatch = optText.match(/\[(HÌNH_ẢNH_?\d+|IMAGE_?\d+|IMG_?\d+)\]/i);
+    if (optTokenMatch) {
+      const resolved = resolveImageToken(optTokenMatch[0], imageMap, defaultImages);
+      if (resolved) {
+        optImage = resolved;
+        optText = optText.replace(optTokenMatch[0], '').trim();
+      }
+    }
+
+    // Pattern 2: Direct data URL or URL or token in tag
+    if (!optImage) {
+      const optImgMatch = optText.match(/\[(?:HÌNH_ẢNH|IMAGE|HÌNH|ẢNH)\s*:\s*([^\]]+)\]/i) ||
+                          optText.match(/!\[.*?\]\(([^)]+)\)/i);
+      if (optImgMatch) {
+        const candidate = optImgMatch[1].trim();
+        if (candidate.startsWith('data:') || candidate.startsWith('http')) {
+          optImage = candidate;
+        } else {
+          optImage = resolveImageToken(candidate, imageMap, defaultImages);
+        }
+        optText = optText.replace(optImgMatch[0], '').trim();
+      }
+    }
 
     if (isMarked) {
       inlineCorrectOption = letter;
     }
 
-    options.push({
-      id: letter,
-      text: optText || `Phương án ${letter}`
-    });
+    // Deduplicate options by letter so a question never has duplicate option IDs
+    const existingIndex = options.findIndex((o) => o.id === letter);
+    if (existingIndex >= 0) {
+      options[existingIndex] = {
+        id: letter,
+        text: optText || `Phương án ${letter}`,
+        image: optImage || options[existingIndex].image
+      };
+    } else {
+      options.push({
+        id: letter,
+        text: optText || `Phương án ${letter}`,
+        image: optImage
+      });
+    }
   }
 
   if (options.length === 0) {
@@ -336,7 +605,8 @@ function parseSingleMultipleChoiceBlock(
     ],
     correctOptionId: finalCorrect,
     explanation: explanation || undefined,
-    points: explicitPoints
+    points: explicitPoints,
+    image: questionImage
   };
 }
 
@@ -346,12 +616,14 @@ function parseSingleMultipleChoiceBlock(
 function parseEssayBlocks(
   text: string, 
   startIndex: number,
-  explanationMap: Record<number, string>
+  explanationMap: Record<number, string>,
+  imageMap?: Record<string, string>,
+  defaultImages?: string[]
 ): Question[] {
   if (!text.trim()) return [];
 
   const questions: Question[] = [];
-  const blockRegex = /(?:^|\n)(?:(?:Câu|Question|Bài)\s*(\d+)[\.:\s\-–—]|(\d+)[\.:]\s+)([\s\S]*?)(?=(?:\n(?:(?:Câu|Question|Bài)\s*\d+[\.:\s\-–—]|\d+[\.:]\s+)|$))/gi;
+  const blockRegex = /(?:^|\n)\s*(?:(?:(?:(?:Câu|Question|Bài)\s*(\d+)|(\d+))\s*(?:\(([A-Za-z0-9\s]{1,15})\)|\[([A-Za-z0-9\s]{1,15})\])?|(?:\(([A-Za-z0-9\s]{1,15})\)|\[([A-Za-z0-9\s]{1,15})\]))\s*[\.:\s\-–—]+)([\s\S]*?)(?=(?:\n\s*(?:(?:(?:(?:Câu|Question|Bài)\s*\d+|\d+)\s*(?:\([A-Za-z0-9\s]{1,15}\)|\[[A-Za-z0-9\s]{1,15}\])?|(?:\([A-Za-z0-9\s]{1,15}\)|\[[A-Za-z0-9\s]{1,15}\]))\s*[\.:\s\-–—]+)|$))/gi;
 
   let match: RegExpExecArray | null;
   let autoOrder = startIndex + 1;
@@ -359,51 +631,12 @@ function parseEssayBlocks(
   while ((match = blockRegex.exec(text)) !== null) {
     const qNumStr = match[1] || match[2];
     const qNum = qNumStr ? parseInt(qNumStr, 10) : autoOrder;
-    const blockContent = match[3].trim();
+    const levelTag = (match[3] || match[4] || match[5] || match[6] || '').trim();
+    const blockContent = match[7].trim();
 
-    // Skip section header title lines
-    if (/^(?:PHẦN\s*)?TỰ\s*LUẬN/i.test(blockContent) && blockContent.length < 50) {
-      continue;
-    }
-
-    // Skip multiple choice questions that may have leaked into essay section
-    if (/[A-D][\.:\)]\s+/i.test(blockContent) && blockContent.includes('A.') && blockContent.includes('B.')) {
-      continue;
-    }
-
-    let explicitPoints = 1.5;
-    const pointsMatch = blockContent.match(/\(([\d\.,]+)\s*(?:đ|điểm)\)/i);
-    if (pointsMatch) {
-      const parsed = parseFloat(pointsMatch[1].replace(',', '.'));
-      if (!isNaN(parsed) && parsed > 0) explicitPoints = parsed;
-    }
-
-    // Extract Model Answer / Rubric
-    let modelAnswer = explanationMap[qNum] || '';
-    let questionText = blockContent;
-
-    const answerSplitMatch = blockContent.match(/(?:(?:Đáp\s*án|Hướng\s*dẫn\s*chấm|Biểu\s*điểm|Barem|Lời\s*giải)[\s:_\-]*)([\s\S]*)/i);
-    if (answerSplitMatch) {
-      if (!modelAnswer) {
-        modelAnswer = answerSplitMatch[1].trim();
-      }
-      questionText = blockContent.slice(0, answerSplitMatch.index).trim();
-    }
-
-    // Clean question title
-    questionText = questionText.replace(/^\(([\d\.,]+)\s*(?:đ|điểm)\)[\s:\-]*/i, '').trim();
-
-    if (questionText.length > 0) {
-      questions.push({
-        id: `q_essay_${autoOrder}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        order: autoOrder,
-        type: 'essay',
-        text: questionText,
-        options: [],
-        modelAnswer: modelAnswer || 'Đáp án mẫu & Biểu điểm tự luận do giáo viên cung cấp.',
-        explanation: modelAnswer || undefined,
-        points: explicitPoints
-      });
+    const parsedEssay = parseSingleEssayBlock(blockContent, autoOrder, qNum, levelTag, explanationMap, imageMap, defaultImages);
+    if (parsedEssay) {
+      questions.push(parsedEssay);
       autoOrder++;
     }
   }
@@ -428,20 +661,20 @@ function parseEssayBlocks(
   return questions;
 }
 
-// Built-in presets based directly on user's real exam samples (Đoàn Thượng, Đại số 8, Lý Thái Tổ)
+// Built-in presets based directly on user's real exam samples (Trường THCS Nguyễn Đôn)
 export const EXAM_SAMPLE_PRESETS = [
   {
     id: 'sample_toan_thpt',
-    title: 'Đề thi thử THPT QG Môn Toán - Trường THPT Đoàn Thượng (50 câu trắc nghiệm + Lời giải)',
-    description: 'Đề chuẩn cấu trúc THPT Quốc Gia có bảng đáp án 50 câu (1-D 2-C 3-B...) và phần Lời giải chi tiết.',
+    title: 'Đề kiểm tra Môn Toán - Trường THCS Nguyễn Đôn (50 câu trắc nghiệm + Lời giải)',
+    description: 'Đề chuẩn cấu trúc có bảng đáp án 50 câu (1-D 2-C 3-B...) và phần Lời giải chi tiết.',
     subject: 'Toán học',
-    grade: 'Lớp 12',
+    grade: 'Lớp 9',
     durationMinutes: 90,
     mcPoints: 10,
     essayPoints: 0,
-    rawText: `SỞ GD VÀ ĐT HẢI DƯƠNG
-TRƯỜNG THPT ĐOÀN THƯỢNG
-ĐỀ THI THỬ THPT QG LẦN 1, NĂM HỌC 2020 - 2021
+    rawText: `PHÒNG GD&ĐT
+TRƯỜNG THCS NGUYỄN ĐÔN
+ĐỀ THI HỌC KỲ NĂM HỌC 2024 - 2025
 Môn: Toán
 Thời gian làm bài: 90 phút (50 câu trắc nghiệm)
 
@@ -576,18 +809,17 @@ Câu 7 (1đ). Giải phương trình nâng cao sau:
   },
   {
     id: 'sample_anh_thpt',
-    title: 'Đề thi thử THPT Môn Tiếng Anh - Trường THPT Lý Thái Tổ',
-    description: 'Đề thi Tiếng Anh chuẩn format Bộ GD&ĐT gồm trắc nghiệm ngữ pháp, từ vựng và bài đọc hiểu.',
+    title: 'Đề kiểm tra Môn Tiếng Anh - Trường THCS Nguyễn Đôn',
+    description: 'Đề thi Tiếng Anh chuẩn format gồm trắc nghiệm ngữ pháp, từ vựng và bài đọc hiểu.',
     subject: 'Tiếng Anh',
-    grade: 'Lớp 12',
-    durationMinutes: 60,
+    grade: 'Lớp 9',
+    durationMinutes: 45,
     mcPoints: 10,
     essayPoints: 0,
-    rawText: `SỞ GD & ĐT BẮC NINH
-TRƯỜNG THPT LÝ THÁI TỔ
-KỲ THI THỬ TỐT NGHIỆP THPT KHỐI 12
+    rawText: `TRƯỜNG THCS NGUYỄN ĐÔN
+ĐỀ KIỂM TRA ĐỊNH KỲ
 MÔN TIẾNG ANH
-Thời gian làm bài: 60 phút
+Thời gian làm bài: 45 phút
 
 Question 1: They believe that burning fossil fuels is the main cause of air pollution.
 A. Burning fossil fuels is believed to have caused high levels of air pollution.
@@ -642,6 +874,199 @@ Chọn đáp án A.
 Question 5:
 Đuôi "-ed" của raised phát âm là /d/, các từ còn lại phát âm là /t/.
 Chọn đáp án A.`
+  },
+  {
+    id: 'sample_tinhoc8_tinhson',
+    title: 'Đề cương Giữa kỳ I - Tin học 8 - THCS Tịnh Sơn',
+    description: 'Đề cương ôn tập Giữa kỳ I môn Tin học Lớp 8 - Trường THCS Tịnh Sơn (Sơn Tịnh), gồm 36 câu trắc nghiệm (NB, TH, VD) và 6 câu tự luận có đáp án và lời giải chi tiết.',
+    subject: 'Tin học',
+    grade: 'Lớp 8',
+    durationMinutes: 45,
+    mcPoints: 7,
+    essayPoints: 3,
+    rawText: `TRƯỜNG THCS TỊNH SƠN
+UBND HUYỆN SƠN TỊNH
+ĐỀ CƯƠNG GIỮA KỲ I - NĂM HỌC 2023 - 2024
+Môn Tin học - Lớp 8
+
+I. Phần trắc nghiệm. Hãy khoanh tròn chữ cái trước câu trả lời đúng nhất.
+Câu 1(NB): Chiếc máy tính cơ học đầu tiên có tên là gì?
+A. Pascaline.		 B. Babbage.			C. Charle.                    D. Digitus.
+Câu 2(NB):Thành phần điện tử chính trong máy tính thế hệ thứ nhất là loại linh kiện điện tử nào?
+A. Bóng bán dẫn. 				B. Đèn điện tử chân không.		
+C. Mạch tích hợp.				D. Mạch tích hợp cỡ rất lớn.
+Câu 3(NB): Máy tính cấu tạo dựa trên kiến trúc Von Neumann gồm những thành phần nào? 
+A. Bộ xử lý, bộ phân tích, các cổng kết nối với thiết bị vào – ra và đường truyền giữa các bộ phận đó. 
+B. Bộ xử lý, bộ nhớ, các cổng kết nối với thiết bị vào – ra và đường truyền giữa các bộ phận đó. 
+C. Bộ phân tích, bộ nhớ, các cổng kết nối với thiết bị vào – ra và đường truyền giữa các bộ phận đó.
+D. Bộ xử lý, bộ nhớ, bộ phân tích và đường truyền giữa các bộ phận đó 
+Câu 4(NB): Cho đến hiện nay, máy tính điện tử đã trải qua bao nhiêu thế hệ?
+A. 3.				B. 4.		C. 5.	D. 6.
+Câu 5(NB): Máy tính điện tử ra đời vào
+A. những năm 1900. 			B. những năm 1920.	
+C. những năm 1940.			D. những năm 1960. 
+Câu 6(NB):  Một trong những đặc điểm mà những chiếc máy tính phát minh sau đó hướng tới là gì?
+A.Nhỏ, nhẹ, tiêu thụ ít điện năng.		B.To lớn hơn.
+C.Dung lượng vừa phải.				D.Xử lí chậm.
+Câu 7(NB): Đâu không phải là một trong những đặc điểm chính của thông tin số
+A. Dễ dàng nhân bản.		B. Khó lan truyền.		C. Khó bị xóa bỏ hoàn toàn.
+D. Có thể được truy cập từ xa nếu được phép.
+Câu 8(NB): Một bức ảnh được chụp thì có điểm khác gì với một bức tranh tạo ra trên giấy?
+A. Bức ảnh chụp luôn đắt tiền hơn.
+B. Bức ảnh chụp không thể chuyển cho người khác.
+C. Khi chuyển cho người khác, bức ảnh chụp không mất đi.
+D. Khi chuyển cho người khác, bức ảnh chụp sẽ mất đi.
+Câu 9(NB): Thông tin số là thông tin được mã hóa thành gì?
+A. Các dãy bit.						B. Các bức ảnh.
+C. Các dòng điện.			                     D. Các đoạn phim.
+Câu 10(NB): Thông tin số có thể được truy cập từ xa thông qua gì?
+A. Kết nối điện tử.		              B. Kết nối Internet.
+C. Kết nối vật lý.		              D. Thông tin số không thể được truy cập từ xa.
+Câu 11(NB): Từ nào còn thiếu trong chỗ trống:
+Thông tin số …… được nhân bản và chia sẻ. 
+A. dễ dàng.                 B. khó khăn.                    C. luôn luôn.              D. không bao giờ.
+Câu 12(NB): Tại sao các thông tin số khó bị xóa bỏ hoàn toàn?
+A. Vì các thông tin đã được mã hóa.
+B. Vì nhân bản và chia sẻ thông tin số rất khó khăn.
+C. Vì nhân bản và chia sẻ thông tin số rất dễ dàng.
+D. Vì không có kết nối Internet.
+Câu 13(VD): Thông tin trong môi trường số đáng tin cậy ở mức độ nào?
+A. Hoàn toàn đáng tin cậy bởi vì luôn có người chịu trách nhiệm đối với thông tin cụ thể.
+B. Chủ yếu là thông tin bịa đặt do mục đích của người tạo ra và lan truyền thông tin.
+C. Hầu hết là những tin đồn từ người này qua người khác, từ nơi này đến nơi khác.
+D. Mức độ tin cậy rất khác nhau, từ những thông tin sai lệch đến thông tin đáng tin cậy.
+Câu 14(NB): Câu nói nào đúng khi nói về quyền tác giả của thông tin số?
+A. Thông tin số là của tất cả mọi người, ai cũng có quyền chỉnh sửa và chia sẻ. 
+B. Pháp luật bảo hộ quyền tác giả của thông tin số
+C. Công ty sở hữu mạng xã hội, ứng dụng…là người duy nhất sở hữu quyền tác giả đối với thông tin số.
+D. Việc chỉnh sửa và chia sẻ thông tin số trên Internet không chịu sự quản lý của Nhà nước và pháp luật.
+Câu 15(NB): Thông tin số được nhiều tổ chức và cá nhân lưu trữ với dung lượng rất lớn,
+A. được truy cập tự do và có độ tin cậy khác nhau.
+B. được bảo hộ quyền tác giả và không đáng tin cậy.
+C. được cấp quyền truy cập khác nhau.
+D. được bảo hộ quyền tác giả và rất đáng tin cậy.
+Câu 16(NB): Từ nào còn thiếu trong chỗ trống:
+Thông tin số cần được quản lý, khai thác ……….. và có trách nhiệm
+A. tự do.                 B. tối đa.                    C. an toàn.              D. nhanh chóng.
+Câu 17(TH): Thế hệ máy tính nào bắt đầu sử dụng bàn phím và màn hình?
+A. Thế hệ đầu tiên.	B. Thế hệ thứ hai.	C. Thế hệ thứ ba.	D. Thế hệ thứ tư.
+Câu 18(NB): Hãy sắp xếp các thế hệ công cụ tính toán sau theo thứ tự thời gian:
+a) Máy tính điện tử; b) Máy tính cơ học; c) Công cụ thủ công.
+A. a -> b -> c.		B. b -> c -> a.	C. c -> a -> b.		D. c -> b -> a
+Câu 19(VC): Bộ vi xử lý là linh kiện máy tính dựa trên công nghệ nào? 
+A. Đèn điện tử chân không.	B. Linh kiện bán dẫn đơn giản.
+C. Mạch tích hợp hàng chục, hàng trăm linh kiện bán dẫn.
+D. Mạch tích hợp cỡ lớn, gồm hàng chục nghìn đến hàng triệu linh kiện bán dẫn.	
+Câu 20(TH): Nguyên lý nào đã đặt nền móng cho sự phát triển của máy tính điện tử?
+A. Nguyên lý Von Neumann		B. Nguyên lý năng lượng mặt trời
+C. Nguyên lý Archimedes		D. Đáp án khác
+Câu 21(VD): Vào thời điểm nước ta hoàn toàn thống nhất, năm 1975. Thế hệ máy tính điện tử nào đã xuất hiện ở nước ta ?
+A. Thế hệ thứ năm	B. Thế hệ thứ tư	C. Thế hệ thứ ba	D. Thế hệ thứ nhất
+Câu 22(NB): Thế hệ thứ nhất trong lịch sử phát triển máy tính diễn ra vào năm nào?
+A. 1990 – nay 	B.1965 – 1974.	C. 1945 – 1955. 	D. 1955 – 1965.
+Câu 23(NB): Máy tính được Babbage thiết kế để làm gì?
+A. Thực hiện bốn phép tính số học		B. Tính toán ngoài bốn phép tính số học.
+C. Thực hiện phép cộng				D. Thực hiện phép trừ
+Câu 24(TH): Thông tin số có thể được truy cập như thế nào?
+A. Có thể truy cập từ xa mà không cần sự đồng ý của người quản lí.
+B. Có thể truy cập từ xa nếu được sự đồng ý của người quản lí.
+C. Không thể truy cập từ xa dù được sự đồng ý của người quản lí.
+D. Không thể truy cập từ xa nên không cần sự đồng ý của người quản lí.
+Câu 25(TH): Phát biểu “ Thông tin số khó bị xóa bỏ hoàn toàn” có đúng không? Tại sao?
+A. Đúng. Vì không xác định được tất cả những nơi nó được sao chép và lưu trữ.
+B. Đúng. Vì sau khi xóa, tệp và thư mục vẫn còn được lưu trữ trong thùng rác.
+C. Sai. Vì các tệp và thư mục dễ dàng bị xoá khỏi nơi nó được lưu trữ..
+D. Sai. Vì thông tin số không giống như một tờ giấy để xé hay đốt đi được.
+Câu 26(VD): Thông tin trong môi trường số đáng tin cậy ở mức độ nào?
+A. Hoàn toàn đáng tin cậy bởi vì luôn có người chịu trách nhiệm đối với thông tin cụ thể.
+B. Chủ yếu là thông tin bịa đặt do mục đích của người tạo ra và lan truyền thông tin.
+C. Hầu hết là những tin đồn từ người này qua người khác, từ nơi này đến nơi khác.
+D. Mức độ tin cậy rất khác nhau, từ những thông tin sai lệch đến thông tin đáng tin cậy.
+Câu 27(NB): Đặc điểm của thông tin trên Internet là?
+A. Thường xuyên được cập nhật; có thể tìm kiếm dễ dàng, nhanh chóng.
+B. Có nguồn thông tin đáng tin cậy nhưng cũng có nguồn thông tin không thực sự đáng tin cậy.
+C. Nguồn thông tin khổng lồ, đa dạng, phong phú.			D. Cả ba đặc điểm trên.
+Câu 28(TH): Đặc điểm nào sau đây không thuộc về thông tin số?
+A.Nhiều người có thể truy cập đồng thời.	B.Chỉ cho phép một người sử dụng tại một thời điểm.
+C.Có công cụ hỗ trợ tìm kiếm, xử lí, chuyển đổi hiệu quả.	D.Có thể truy cập từ xa.
+Câu 29(TH): Thông tin trong những trường hợp nào sau đây là không đáng tin cậy?
+A.Thông tin trên website có tên miền là .gov.
+B.Bài viết hướng dẫn phòng tránh dịch bệnh trên trang web của cơ quan y tế.
+C.Bài viết của một cá nhân đăng tải trên mạng xã hội với mục đích bôi nhọ người khác.
+D. Bài viết trên tài khoản mạng xã hội của một nhà báo có uy tín và có trích dẫn nguồn thông tin từ trang web của Chính phủ.
+Câu 30(NB): Hành động nào sau đây không vi phạm đạo đức và pháp luật?
+A. Đăng tải thông tin sai sự thật lên mạng.		B. Cố ý nghe, ghi âm trái phép các cuộc trò chuyện.
+C. Tải một bài trình chiếu của người khác từ internet và sử dụng như là của mình tạo ra.
+D. Tặng đĩa nhạc có bản quyền em đã mua cho người khác.
+Câu 31(NB): Thông tin số có đặc điểm chính là?
+A.Thông tin số dễ dàng được nhân bản và lan truyền nhưng khó bị xóa bỏ hoàn toàn.
+B.Thông tin số không thể được truy cập từ xa nếu người quản lí thông tin đó cho phép.
+C.Thông tin số không thể nhân bản và lan truyền nhưng khó bị xóa bỏ hoàn toàn.
+D.Đáp án khác.
+Câu 32(TH): Từ nào sau đây xuất hiện nhiều nhất cùng với từ “tìm kiếm", thuật ngữ được sử dụng để nói về việc tra cứu thông tin trên Internet?
+A. Trang web.		B. Từ khoá.		C. Báo cáo.		D. Biểu mẫu.
+Câu 33(TH): Ví dụ nào sau đây nói về thông tin có độ tin cậy thấp? 
+A. Bài bình luận về một CD âm nhạc.	B. Bảng xếp hạng doanh thu âm nhạc.
+C. Một bộ sưu tập các bản nhạc cũ.		D. Giá bán một CD âm nhạc thời xưa.
+Câu 34(VD): Sau khi tạo xong bài trình chiếu về chủ đề “Năng lượng tái tạo” em có thể sử dụng phương tiện kĩ thuật số nào để chia sẻ bài trình chiếu cho các bạn trong lớp?
+A. Thư  tay.				B. Thư điện tử.		
+C. Máy tính cá nhân. 	  		D. In ra rồi gửi.
+Câu 35(VD): Nguồn thông tin nào đáng tin cậy nhất khi em muốn tìm hiểu về chiếc Ipad em mới được tặng nhân dịp sinh nhật:
+A. Hướng dẫn của nhà sản xuất		B.Hướng dẫn của một người bạn đã từng sử dụng
+C. Hướng dẫn trên một số diễn đàn công nghệ	D. Hướng dẫn của ba mẹ em .
+Câu 36(NB): Khi em đăng một bức ảnh lên mạng xã hội ở chế độ công khai, ai là người có thể tiếp cận bức ảnh đó?
+A. Chỉ có bạn bè của em.				B. Không ai cả.
+C. Chỉ có em.                               			D. Tất cả mọi người.
+
+II. Phần tự luận.
+Câu 37(TH) : Em hãy nêu một vài biểu hiện vi phạm đạo đức và pháp luật hay biểu hiện thiếu văn hoá khi sử dụng công nghệ số?
+Câu 38(VD):Em hãy nêu một vài kết quả (địa chỉ trang web) đã tìm được với từ khoá “nguồn năng lượng tái tạo” mà em đã được thực hành. Theo em nguồn thông tin nào đáng tin cậy nhất?
+Câu 39(VDC) :Khoa chia sẻ cho An bức ảnh ruộng lúa chín vàng mà mình đã chụp. An không hỏi ý kiến Khoa, tự mình sửa ảnh và sử dụng trong bài trình chiếu của mình.Theo em An làm đúng hay không?Vì sao? 
+Câu 40 (NB): Thông tin số có những đặc điểm chính nào? 
+Câu 41(VD):Làm thế nào để  xác định được thông tin có  đáng tin cậy hay không?
+Câu 42(VDC): Em hãy kể một ví dụ về tin đồn(trong cuộc sống hoặc trên mạng) và trả lời các câu hỏi sau: Tin đồn đó xuất hiện từ sự việc nào? Tác hại của tin đồn dó là gì?
+
+-----------HẾT----------
+Thí sinh không được sử dụng tài liệu. Cán bộ coi thi không giải thích gì thêm
+
+ĐÁP ÁN
+ 1.A	2.B	3.B	4.C	5.C	6.D	7.B	8.C
+ 9.A	10.B	11.A	12.C	13.D	14.B	15.C	16.C
+ 17.C	18.D	19.A	20.A	21.C	22.C	23.B	24.B
+ 25.A	26.D	27.D	28.B	29.C	30.D	31.C	32.B
+ 33.A	34.B	35.A	36.D
+
+HƯỚNG DẪN GIẢI CHI TIẾT
+Câu 37: 
+- Quay phim trong rạp chiếu phim.
+- Chụp ảnh ở nơi không cho phép (Hình 4.1 SGK trang 19)
+- Ghi âm trái phép các cuộc nói chuyện.
+- Tải về máy tính cá nhân các tệp bài hát, video có bản quyền để sử dụng mà chưa được phép.
+- Sao chép thông tin từ một trang web và coi đó là của mình.
+- Sử dụng phần mềm bẻ khoá.
+- Phát trực tiếp (livestream) hoặc chia sẻ các vụ bạo lực học đường. Đưa lên mạng thông tin cá nhân của người khác mà chưa được phép…
+- Tham gia, chia sẻ, quảng cáo cho các trang web cổ vũ bạo lực, đánh bạc…
+(Học sinh chỉ cần nêu đúng 3 biểu hiện)
+Câu 38: 
+- Học sinh sẽ đưa ra một vài địa chỉ trang web.
+- Nguồn thông tin đáng tin cậy nhất là thông tin tư cơ quan chính phủ.
+Câu 39: 
+- An làm không đúng.
+- Vì An đã sử dụng ảnh của Khoa mà không có sự cho phép của Khoa.
+Câu 40: Thông tin số có những đặc điểm chính nào?
+Thông tin số có những đặc điểm chính như sau:
+- Thông tin số dễ dàng được nhân bản và lan truyền nhưng khó bị xóa bỏ hoàn toàn
+- Thông tin số có thể được truy cập từ xa nếu người quản lý thông tin đó cho phép
+Câu 41:Làm thế nào để  xác định được thông tin có  đáng tin cậy hay không?
+* Làm thế nào để  xác định được thông tin có  đáng tin cậy hay không?  
+Để  xác định được thông tin có  đáng tin cậy hay không, ta cần:
+- Kiểm tra nguồn thông tin
+- Phân biệt ý kiến với sự kiện
+- Kiểm tra chứng cứ của kết luận
+- Đánh giá tính thời sự của thông tin
+Câu 42: 
+Ví dụ : Tin đồn về tác dụng của thuốc chữa bệnh Covid 19.
+Tác hại: mất tiền và thêm bệnh.`
   }
 ];
 

@@ -10,7 +10,7 @@ export interface UserProfile {
   fullName: string;
   grade: string; // 'Lớp 6' -> 'Lớp 12', hoặc 'Tất cả'
   className: string; // e.g. '9A1', '12A2', hoặc bộ môn
-  school: string; // Trường học: e.g. 'THPT Chu Văn An'
+  school: string; // Trường học: e.g. 'Trường THCS Nguyễn Đôn'
   birthYear: string; // Năm sinh: e.g. '2010', '1988'
   email?: string;
   phoneNumber?: string;
@@ -23,6 +23,7 @@ export interface UserProfile {
 export interface QuestionOption {
   id: string;
   text: string;
+  image?: string; // Hình ảnh / sơ đồ đi kèm phương án trả lời (A, B, C, D)
 }
 
 export interface Question {

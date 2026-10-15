@@ -11,6 +11,7 @@ import { AIAssistantModal } from './components/AIAssistantModal';
 import { FirebaseDeployGuide } from './components/FirebaseDeployGuide';
 import { UserAccountModal } from './components/UserAccountModal';
 import { AuthScreen } from './components/AuthScreen';
+import { PublicExamJoinScreen } from './components/PublicExamJoinScreen';
 import { GradingNotificationToast, GradingNotification } from './components/GradingNotificationToast';
 import { StorageService } from './services/storage';
 import { testConnection, subscribeToExams, subscribeToSubmissions, subscribeToUserProfiles } from './services/firebase';
@@ -27,7 +28,7 @@ export default function App() {
   const [activeExamForStudent, setActiveExamForStudent] = useState<Exam | null>(null);
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
-  const [accountModalTab, setAccountModalTab] = useState<'register' | 'login' | 'forgot_password' | 'switch' | 'profile' | 'edit_profile'>('profile');
+  const [accountModalTab, setAccountModalTab] = useState<'register' | 'login' | 'forgot_password' | 'profile' | 'edit_profile'>('profile');
   const [syncStatusMsg, setSyncStatusMsg] = useState<string>('');
 
   // Live Toast Notification for Graded Exam
@@ -265,7 +266,7 @@ export default function App() {
     setSubmissions(StorageService.getSubmissions());
   };
 
-  const handleOpenAccountModal = (tab: 'register' | 'login' | 'forgot_password' | 'switch' | 'profile' | 'edit_profile' = 'profile') => {
+  const handleOpenAccountModal = (tab: 'register' | 'login' | 'forgot_password' | 'profile' | 'edit_profile' = 'profile') => {
     setAccountModalTab(tab);
     setIsAccountModalOpen(true);
   };

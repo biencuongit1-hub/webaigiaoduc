@@ -22,6 +22,7 @@ import {
   Award
 } from 'lucide-react';
 import { Exam, ExamSubmission, EssayScoreDetail } from '../types';
+import { generateExamShareUrl } from '../utils/shareUrl';
 
 interface ExamManagementProps {
   exams: Exam[];
@@ -163,7 +164,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
 
   // Copy share URL
   const handleCopyShare = (code: string) => {
-    const url = `${window.location.origin}/?code=${code}`;
+    const url = generateExamShareUrl(code);
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -642,7 +643,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
 
                   return (
                     <div
-                      key={q.id}
+                      key={`${q.id}_${idx}`}
                       className="p-5 rounded-2xl border-2 border-purple-200 bg-purple-50/20 space-y-4"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-100 pb-3">
@@ -685,6 +686,16 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                       <div className="text-xs text-slate-700 font-medium">
                         <strong>Đề bài:</strong> {q.text}
                       </div>
+
+                      {q.image && (
+                        <div className="my-2 p-1.5 bg-white rounded-xl border border-slate-200 inline-block">
+                          <img
+                            src={q.image}
+                            alt="Hình minh họa"
+                            className="max-h-48 w-auto rounded-lg object-contain"
+                          />
+                        </div>
+                      )}
 
                       {/* Student's answer */}
                       <div className="p-3 rounded-xl bg-white border border-purple-200 space-y-1">
@@ -740,7 +751,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                 const isCorrect = studentAnswer === q.correctOptionId;
                 return (
                   <div
-                    key={q.id}
+                    key={`${q.id}_${idx}`}
                     className={`p-3.5 rounded-xl border flex items-center justify-between text-xs ${
                       isCorrect ? 'border-emerald-200 bg-emerald-50/20' : 'border-rose-200 bg-rose-50/20'
                     }`}
@@ -751,9 +762,41 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                       }`}>
                         {idx + 1}
                       </span>
-                      <span className="font-semibold text-slate-800 line-clamp-1 max-w-md">
-                        {q.text}
-                      </span>
+                      <div className="space-y-1">
+                        <span className="font-semibold text-slate-800 line-clamp-1 max-w-md block">
+                          {q.text}
+                        </span>
+                        {q.image && (
+                          <img
+                            src={q.image}
+                            alt="Hình minh họa"
+                            className="max-h-24 w-auto rounded-md object-contain border border-slate-200"
+                          />
+                        )}
+                        {(() => {
+                          const chosenOpt = q.options?.find(o => o.id === studentAnswer);
+                          const correctOpt = q.options?.find(o => o.id === q.correctOptionId);
+                          if (chosenOpt?.image || correctOpt?.image) {
+                            return (
+                              <div className="flex flex-wrap gap-3 pt-1">
+                                {chosenOpt?.image && (
+                                  <div className="flex items-center gap-1 text-[11px] text-slate-600">
+                                    <span>Ảnh đã chọn ({chosenOpt.id}):</span>
+                                    <img src={chosenOpt.image} alt="Ảnh học sinh chọn" className="max-h-14 w-auto rounded border border-slate-200" />
+                                  </div>
+                                )}
+                                {correctOpt?.image && correctOpt.id !== chosenOpt?.id && (
+                                  <div className="flex items-center gap-1 text-[11px] text-emerald-700">
+                                    <span>Ảnh Đ/A đúng ({correctOpt.id}):</span>
+                                    <img src={correctOpt.image} alt="Ảnh đáp án đúng" className="max-h-14 w-auto rounded border border-emerald-300" />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
@@ -837,7 +880,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
               <input
                 type="text"
                 readOnly
-                value={`${window.location.origin}/?code=${sharingExam.accessCode}`}
+                value={generateExamShareUrl(sharingExam.accessCode)}
                 className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-600 font-mono"
               />
               <button

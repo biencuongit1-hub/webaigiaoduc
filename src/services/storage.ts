@@ -1,4 +1,5 @@
 import { Exam, ExamSubmission, FirebaseConfigState, UserProfile } from '../types';
+import { EXAM_SAMPLE_PRESETS, parseRawExamText } from '../utils/parser';
 import { 
   saveExamToFirestore, 
   deleteExamFromFirestore, 
@@ -7,6 +8,7 @@ import {
   getSubmissionsFromFirestore,
   saveUserProfileToFirestore,
   getUserProfilesFromFirestore,
+  getExamByAccessCodeFromFirestore,
   testConnection 
 } from './firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -26,7 +28,7 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
     fullName: 'Thầy Nguyễn Biên Cương',
     grade: 'Lớp 9',
     className: 'Tổ Toán - Tin',
-    school: 'THCS & THPT Đoàn Thượng',
+    school: 'Trường THCS Nguyễn Đôn',
     birthYear: '1988',
     email: 'biencuong.it1@gmail.com',
     phoneNumber: '0988123456',
@@ -41,7 +43,7 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
     fullName: 'Cô Trần Thị Thu Hương',
     grade: 'Lớp 8',
     className: 'Tổ Sử - Địa',
-    school: 'THCS Lê Quý Đôn',
+    school: 'Trường THCS Nguyễn Đôn',
     birthYear: '1991',
     email: 'thuhuong.su@gmail.com',
     phoneNumber: '0977888999',
@@ -56,7 +58,7 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
     fullName: 'Nguyễn Văn An',
     grade: 'Lớp 9',
     className: '9A1',
-    school: 'THCS & THPT Đoàn Thượng',
+    school: 'Trường THCS Nguyễn Đôn',
     birthYear: '2010',
     studentId: 'HS0901',
     email: 'vanan.2010@gmail.com',
@@ -71,7 +73,7 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
     fullName: 'Trần Thị Mai',
     grade: 'Lớp 9',
     className: '9A1',
-    school: 'THCS & THPT Đoàn Thượng',
+    school: 'Trường THCS Nguyễn Đôn',
     birthYear: '2010',
     studentId: 'HS0902',
     email: 'thimai.9a1@gmail.com',
@@ -80,18 +82,51 @@ export const INITIAL_SAMPLE_USERS: UserProfile[] = [
   }
 ];
 
+// Pre-parse the featured Tin học 8 THCS Tịnh Sơn exam from preset
+const tinHoc8Preset = EXAM_SAMPLE_PRESETS.find(p => p.id === 'sample_tinhoc8_tinhson');
+const tinHoc8Parsed = tinHoc8Preset ? parseRawExamText(tinHoc8Preset.rawText) : null;
+
 export const INITIAL_SAMPLE_EXAMS: Exam[] = [
+  ...(tinHoc8Parsed ? [{
+    id: 'exam_tinhoc8_tinhson',
+    title: 'Đề cương Giữa kỳ I - Tin học 8 - THCS Tịnh Sơn',
+    description: 'Đề cương ôn tập Giữa kỳ I môn Tin học Lớp 8 - Trường THCS Tịnh Sơn (Sơn Tịnh), gồm 36 câu trắc nghiệm (NB, TH, VD) và 6 câu tự luận có đáp án và lời giải chi tiết.',
+    subject: 'Tin học',
+    grade: 'Lớp 8',
+    durationMinutes: 45,
+    totalPoints: 10,
+    multipleChoicePoints: 7,
+    essayPoints: 3,
+    teacherName: 'Tổ Tin học - THCS Tịnh Sơn',
+    accessCode: 'TINHOC8',
+    status: 'published' as const,
+    targetClass: 'Khối 8',
+    createdAt: new Date(Date.now() - 3600 * 24 * 1 * 1000).toISOString(),
+    settings: {
+      shuffleQuestions: false,
+      shuffleOptions: false,
+      showResultImmediately: true,
+      showAnswers: true,
+      requireFullName: true,
+      requireClass: true,
+      requireStudentId: true,
+      antiCheatProctoring: true,
+      maxTabSwitchWarnings: 3,
+      allowedAttempts: 3,
+    },
+    questions: tinHoc8Parsed.questions
+  }] : []),
   {
     id: 'exam_demo_toan9',
-    title: 'Đề kiểm tra Giữa kì II - Toán học Khối 9 (Trắc nghiệm + Tự luận)',
-    description: 'Đề kiểm tra chuẩn cấu trúc gồm 7.0 điểm Trắc nghiệm và 3.0 điểm Tự luận, có barem đáp án và hướng dẫn chấm chi tiết.',
+    title: 'Đề kiểm tra Giữa kì II - Toán học Khối 9 - Trường THCS Nguyễn Đôn (Trắc nghiệm + Tự luận)',
+    description: 'Đề kiểm tra chuẩn cấu trúc Trường THCS Nguyễn Đôn gồm 7.0 điểm Trắc nghiệm và 3.0 điểm Tự luận, có barem đáp án và hướng dẫn chấm chi tiết.',
     subject: 'Toán học',
     grade: 'Lớp 9',
     durationMinutes: 45,
     totalPoints: 10,
     multipleChoicePoints: 7,
     essayPoints: 3,
-    teacherName: 'Thầy Cường - Tổ Toán',
+    teacherName: 'Thầy Cường - Trường THCS Nguyễn Đôn',
     accessCode: 'TOAN9GK2',
     status: 'published',
     targetClass: '9A1',
@@ -464,6 +499,32 @@ export const StorageService = {
     return this.getExams().find(
       (e) => e.accessCode.toUpperCase() === cleanCode || e.id.toUpperCase() === cleanCode
     );
+  },
+
+  async findExamByCode(code: string): Promise<Exam | undefined> {
+    const cleanCode = code.trim().toUpperCase();
+    // 1. Check local storage
+    const local = this.getExams().find(
+      (e) => e.accessCode.toUpperCase() === cleanCode || e.id.toUpperCase() === cleanCode
+    );
+    if (local) return local;
+
+    // 2. Query Firestore Cloud (e.g. when opening on another device/browser/phone)
+    try {
+      const cloudExam = await getExamByAccessCodeFromFirestore(cleanCode);
+      if (cloudExam) {
+        // Cache to local storage so student can access seamlessly
+        const allExams = this.getExams();
+        if (!allExams.some(e => e.id === cloudExam.id)) {
+          allExams.unshift(cloudExam);
+          localStorage.setItem(EXAMS_STORAGE_KEY, JSON.stringify(allExams));
+        }
+        return cloudExam;
+      }
+    } catch (e) {
+      console.warn('Lỗi tải đề thi từ Cloud:', e);
+    }
+    return undefined;
   },
 
   getSubmissions(): ExamSubmission[] {

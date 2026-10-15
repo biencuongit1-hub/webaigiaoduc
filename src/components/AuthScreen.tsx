@@ -46,7 +46,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [fullName, setFullName] = useState('');
   const [grade, setGrade] = useState('Lớp 9');
   const [className, setClassName] = useState('9A1');
-  const [school, setSchool] = useState('Trường THCS & THPT Đoàn Thượng');
+  const [school, setSchool] = useState('Trường THCS Nguyễn Đôn');
   const [birthYear, setBirthYear] = useState('2010');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -87,7 +87,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         onLoginSuccess(user);
       }, 700);
     } else {
-      setErrorMsg('Tên đăng nhập hoặc mật khẩu không chính xác. Mật khẩu mẫu: 123');
+      setErrorMsg('Tên đăng nhập hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.');
     }
   };
 
@@ -407,32 +407,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 <span>Đăng Nhập Vào Hệ Thống</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
-
-              {/* Quick Login Section */}
-              <div className="pt-4 border-t border-slate-100">
-                <span className="text-[11px] font-bold text-slate-500 block mb-2">
-                  ⚡ Hoặc đăng nhập nhanh bằng 1-click (Tài khoản mẫu):
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin(INITIAL_SAMPLE_USERS[2])}
-                    className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 text-left transition-all cursor-pointer"
-                  >
-                    <span className="font-bold text-emerald-900 text-xs block">🎓 HS: Nguyễn Văn An</span>
-                    <span className="text-[10px] text-slate-500 block">Lớp 9A1 • Đoàn Thượng</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin(INITIAL_SAMPLE_USERS[0])}
-                    className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-left transition-all cursor-pointer"
-                  >
-                    <span className="font-bold text-blue-900 text-xs block">👨‍🏫 GV: Thầy Biên Cương</span>
-                    <span className="text-[10px] text-slate-500 block">Tổ Toán • Đoàn Thượng</span>
-                  </button>
-                </div>
-              </div>
             </form>
           )}
 
@@ -635,7 +609,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                       required
                       value={school}
                       onChange={(e) => setSchool(e.target.value)}
-                      placeholder="VD: THCS & THPT Đoàn Thượng, Hải Dương"
+                      placeholder="VD: Trường THCS Nguyễn Đôn"
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

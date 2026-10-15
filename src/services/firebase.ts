@@ -72,6 +72,28 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
+// Recursively strip undefined values so Firestore setDoc never fails
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined) {
+    return null as unknown as T;
+  }
+  if (data === null || typeof data !== 'object') {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeForFirestore(item)) as unknown as T;
+  }
+
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) {
+      sanitized[key] = sanitizeForFirestore(value);
+    }
+  }
+  return sanitized as T;
+}
+
 // Exam operations
 export async function getExamsFromFirestore(): Promise<Exam[]> {
   const path = 'exams';
@@ -91,7 +113,8 @@ export async function getExamsFromFirestore(): Promise<Exam[]> {
 export async function saveExamToFirestore(exam: Exam): Promise<void> {
   const path = `exams/${exam.id}`;
   try {
-    await setDoc(doc(db, 'exams', exam.id), exam, { merge: true });
+    const cleanExam = sanitizeForFirestore(exam);
+    await setDoc(doc(db, 'exams', exam.id), cleanExam, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -119,11 +142,33 @@ export async function getExamByIdFromFirestore(examId: string): Promise<Exam | n
   }
 }
 
+export async function getExamByAccessCodeFromFirestore(code: string): Promise<Exam | null> {
+  const path = 'exams';
+  try {
+    const cleanCode = code.trim().toUpperCase();
+    const q = query(collection(db, path));
+    const snapshot = await getDocs(q);
+    for (const docSnapshot of snapshot.docs) {
+      const data = docSnapshot.data() as Exam;
+      if (
+        (data.accessCode && data.accessCode.toUpperCase() === cleanCode) ||
+        (data.id && data.id.toUpperCase() === cleanCode)
+      ) {
+        return data;
+      }
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
 // Submissions operations
 export async function saveSubmissionToFirestore(submission: ExamSubmission): Promise<void> {
   const path = `submissions/${submission.id}`;
   try {
-    await setDoc(doc(db, 'submissions', submission.id), submission, { merge: true });
+    const cleanSubmission = sanitizeForFirestore(submission);
+    await setDoc(doc(db, 'submissions', submission.id), cleanSubmission, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -189,7 +234,8 @@ export function subscribeToSubmissions(examId: string | undefined, callback: (su
 export async function saveUserProfileToFirestore(profile: UserProfile): Promise<void> {
   const path = `users/${profile.id}`;
   try {
-    await setDoc(doc(db, 'users', profile.id), profile, { merge: true });
+    const cleanProfile = sanitizeForFirestore(profile);
+    await setDoc(doc(db, 'users', profile.id), cleanProfile, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
