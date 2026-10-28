@@ -21,6 +21,7 @@ import {
   HelpCircle,
   Image as ImageIcon,
   ZoomIn,
+  Lock,
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -896,6 +897,37 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
               </div>
             </div>
 
+            {/* MIN SCORE THRESHOLD STATUS BANNER */}
+            {exam.settings.requireMinScoreForReview && (
+              (() => {
+                const minScore = exam.settings.minScoreToShowResult ?? 5.0;
+                const isPassed = submissionResult.score >= minScore;
+
+                if (isPassed) {
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center justify-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Chúc mừng! Điểm của bạn (<strong>{submissionResult.score} điểm</strong>) đã đạt mức tối thiểu <strong>{minScore} điểm</strong> để mở khóa xem đáp án và lời giải chi tiết bên dưới.
+                      </span>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs text-left space-y-1.5">
+                    <div className="flex items-center gap-2 font-bold text-sm text-amber-900">
+                      <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>Giới hạn xem kết quả & đáp án chi tiết</span>
+                    </div>
+                    <p className="leading-relaxed text-amber-800">
+                      Bài thi này quy định thí sinh phải làm đạt từ <strong>{minScore} điểm</strong> trở lên mới được xem đáp án đúng và lời giải chi tiết. Điểm bài làm hiện tại của bạn là <strong>{submissionResult.score} điểm</strong> (chưa đạt điều kiện mở khóa). Hãy ôn tập kỹ kiến thức và thi lại để mở khóa nhé!
+                    </p>
+                  </div>
+                );
+              })()
+            )}
+
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
@@ -917,21 +949,55 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
             </div>
           </div>
 
-          {/* DETAILED ANSWER KEY & EXPLANATIONS */}
+          {/* DETAILED ANSWER KEY & EXPLANATIONS - RESTRICTED IF MIN SCORE NOT MET */}
           {exam.settings.showAnswers && (
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
-              <div className="border-b border-slate-100 pb-4">
-                <h3 className="text-xl font-bold text-slate-900">
-                  Chi Tiết Đáp Án & Hướng Dẫn Chấm
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Đối chiếu đáp án của bạn với phương án chính xác và barem điểm từ giáo viên
-                </p>
-              </div>
+            (() => {
+              const minScoreReq = exam.settings.requireMinScoreForReview 
+                ? (exam.settings.minScoreToShowResult ?? 5.0) 
+                : 0;
+              const hasMetMinScore = !exam.settings.requireMinScoreForReview || 
+                (submissionResult.score >= minScoreReq);
 
-              <div className="space-y-6">
-                {(activeQuestions.length > 0 ? activeQuestions : exam.questions).map((q, idx) => {
-                  const studentAns = submissionResult.answers[q.id];
+              if (!hasMetMinScore) {
+                return (
+                  <div className="bg-white rounded-3xl border border-amber-200 p-8 shadow-sm text-center space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+                      <Lock className="w-7 h-7" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-bold text-slate-800">
+                        Đáp Án & Hướng Dẫn Giải Chi Tiết Đang Bị Khóa
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                        Bạn cần làm đạt tối thiểu <strong>{minScoreReq} điểm</strong> để xem đáp án đúng và barem chấm từng câu. Điểm của bạn trong lượt thi này là <strong>{submissionResult.score} điểm</strong>.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStep('lobby')}
+                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all inline-flex items-center gap-2 cursor-pointer"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Làm lại bài thi để mở khóa đáp án</span>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+                  <div className="border-b border-slate-100 pb-4">
+                    <h3 className="text-xl font-bold text-slate-900">
+                      Chi Tiết Đáp Án & Hướng Dẫn Chấm
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Đối chiếu đáp án của bạn với phương án chính xác và barem điểm từ giáo viên
+                    </p>
+                  </div>
+
+                  <div className="space-y-6">
+                    {(activeQuestions.length > 0 ? activeQuestions : exam.questions).map((q, idx) => {
+                      const studentAns = submissionResult.answers[q.id];
                   const isEssay = q.type === 'essay';
 
                   if (isEssay) {
@@ -1119,9 +1185,11 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                 })}
               </div>
             </div>
-          )}
-        </div>
+          );
+        })()
       )}
+    </div>
+  )}
 
       {/* Lightbox Zoom Image Modal */}
       {zoomedImage && (

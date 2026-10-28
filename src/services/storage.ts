@@ -9,6 +9,7 @@ import {
   saveUserProfileToFirestore,
   getUserProfilesFromFirestore,
   getExamByAccessCodeFromFirestore,
+  findUserInFirestore,
   testConnection 
 } from './firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -19,68 +20,7 @@ const FIREBASE_CONFIG_KEY = 'gvdm_firebase_config_v1';
 const USER_PROFILE_STORAGE_KEY = 'gvdm_current_user_profile_v1';
 const USERS_LIST_STORAGE_KEY = 'gvdm_all_user_profiles_v1';
 
-export const INITIAL_SAMPLE_USERS: UserProfile[] = [
-  {
-    id: 'user_teacher_cuong',
-    role: 'teacher',
-    username: 'thaycuong',
-    password: '123',
-    fullName: 'Thầy Nguyễn Biên Cương',
-    grade: 'Lớp 9',
-    className: 'Tổ Toán - Tin',
-    school: 'Trường THCS Nguyễn Đôn',
-    birthYear: '1988',
-    email: 'biencuong.it1@gmail.com',
-    phoneNumber: '0988123456',
-    subject: 'Toán học',
-    createdAt: new Date(Date.now() - 3600 * 24 * 10 * 1000).toISOString()
-  },
-  {
-    id: 'user_teacher_huong',
-    role: 'teacher',
-    username: 'cothuhuong',
-    password: '123',
-    fullName: 'Cô Trần Thị Thu Hương',
-    grade: 'Lớp 8',
-    className: 'Tổ Sử - Địa',
-    school: 'Trường THCS Nguyễn Đôn',
-    birthYear: '1991',
-    email: 'thuhuong.su@gmail.com',
-    phoneNumber: '0977888999',
-    subject: 'Lịch sử & Địa lý',
-    createdAt: new Date(Date.now() - 3600 * 24 * 5 * 1000).toISOString()
-  },
-  {
-    id: 'user_student_an',
-    role: 'student',
-    username: 'vanan2010',
-    password: '123',
-    fullName: 'Nguyễn Văn An',
-    grade: 'Lớp 9',
-    className: '9A1',
-    school: 'Trường THCS Nguyễn Đôn',
-    birthYear: '2010',
-    studentId: 'HS0901',
-    email: 'vanan.2010@gmail.com',
-    phoneNumber: '0912345678',
-    createdAt: new Date(Date.now() - 3600 * 24 * 3 * 1000).toISOString()
-  },
-  {
-    id: 'user_student_mai',
-    role: 'student',
-    username: 'thimai9a1',
-    password: '123',
-    fullName: 'Trần Thị Mai',
-    grade: 'Lớp 9',
-    className: '9A1',
-    school: 'Trường THCS Nguyễn Đôn',
-    birthYear: '2010',
-    studentId: 'HS0902',
-    email: 'thimai.9a1@gmail.com',
-    phoneNumber: '0987654321',
-    createdAt: new Date(Date.now() - 3600 * 24 * 2 * 1000).toISOString()
-  }
-];
+export const INITIAL_SAMPLE_USERS: UserProfile[] = [];
 
 // Pre-parse the featured Tin học 8 THCS Tịnh Sơn exam from preset
 const tinHoc8Preset = EXAM_SAMPLE_PRESETS.find(p => p.id === 'sample_tinhoc8_tinhson');
@@ -587,13 +527,19 @@ export const StorageService = {
     try {
       const data = localStorage.getItem(USERS_LIST_STORAGE_KEY);
       if (!data) {
-        localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_USERS));
-        INITIAL_SAMPLE_USERS.forEach(u => saveUserProfileToFirestore(u).catch(() => {}));
-        return INITIAL_SAMPLE_USERS;
+        localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify([]));
+        return [];
       }
-      return JSON.parse(data);
+      const parsed: UserProfile[] = JSON.parse(data);
+      // Cleanse any old sample mock accounts
+      const sampleIds = ['user_teacher_cuong', 'user_teacher_huong', 'user_student_an', 'user_student_mai'];
+      const filtered = parsed.filter(u => !sampleIds.includes(u.id));
+      if (filtered.length !== parsed.length) {
+        localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(filtered));
+      }
+      return filtered;
     } catch {
-      return INITIAL_SAMPLE_USERS;
+      return [];
     }
   },
 
@@ -668,25 +614,44 @@ export const StorageService = {
     // Save to Firestore cloud database
     try {
       await saveUserProfileToFirestore(profile);
-      console.log(`[Firebase Auto-Deploy] Đã tạo tài khoản "${profile.fullName}" (${profile.role}) trên Firestore.`);
+      console.log(`[Firebase Database] Đã lưu tài khoản "${profile.fullName}" (${profile.role}) vào Firestore.`);
     } catch (err) {
       console.warn('[Firebase] Lưu tài khoản cục bộ:', err);
     }
   },
 
   /**
-   * Login with username / email / phone and password
+   * Login with username / email / phone and password (Checks local cache first, then queries Firestore directly)
    */
-  login(identifier: string, password: string): UserProfile | null {
+  async login(identifier: string, password: string): Promise<UserProfile | null> {
     const cleanId = identifier.trim().toLowerCase();
+    const cleanPhone = cleanId.replace(/\s+/g, '');
     const users = this.getAllUsers();
 
-    const matched = users.find(u => {
+    let matched = users.find(u => {
       const matchUsername = u.username && u.username.toLowerCase() === cleanId;
       const matchEmail = u.email && u.email.toLowerCase() === cleanId;
-      const matchPhone = u.phoneNumber && u.phoneNumber.replace(/\s+/g, '') === cleanId.replace(/\s+/g, '');
+      const matchPhone = u.phoneNumber && u.phoneNumber.replace(/\s+/g, '') === cleanPhone;
       return matchUsername || matchEmail || matchPhone;
     });
+
+    // If not found in local cache, query Firestore cloud database directly
+    if (!matched) {
+      try {
+        const cloudUser = await findUserInFirestore(identifier);
+        if (cloudUser) {
+          matched = cloudUser;
+          // Cache into local storage
+          const currentList = this.getAllUsers();
+          if (!currentList.some(u => u.id === cloudUser.id)) {
+            currentList.unshift(cloudUser);
+            localStorage.setItem(USERS_LIST_STORAGE_KEY, JSON.stringify(currentList));
+          }
+        }
+      } catch (err) {
+        console.warn('[Firebase Login] Lỗi tra cứu tài khoản trên Firestore:', err);
+      }
+    }
 
     if (!matched) return null;
 
@@ -703,16 +668,27 @@ export const StorageService = {
   /**
    * Find user for password recovery by email or phone number or username
    */
-  findUserForPasswordReset(contact: string): UserProfile | null {
+  async findUserForPasswordReset(contact: string): Promise<UserProfile | null> {
     const clean = contact.trim().toLowerCase();
+    const cleanPhone = clean.replace(/\s+/g, '');
     const users = this.getAllUsers();
 
-    return users.find(u => {
+    const matched = users.find(u => {
       const matchEmail = u.email && u.email.toLowerCase() === clean;
-      const matchPhone = u.phoneNumber && u.phoneNumber.replace(/\s+/g, '') === clean.replace(/\s+/g, '');
+      const matchPhone = u.phoneNumber && u.phoneNumber.replace(/\s+/g, '') === cleanPhone;
       const matchUser = u.username && u.username.toLowerCase() === clean;
       return matchEmail || matchPhone || matchUser;
-    }) || null;
+    });
+
+    if (matched) return matched;
+
+    // Query Firestore directly
+    try {
+      const cloudUser = await findUserInFirestore(contact);
+      return cloudUser;
+    } catch {
+      return null;
+    }
   },
 
   /**

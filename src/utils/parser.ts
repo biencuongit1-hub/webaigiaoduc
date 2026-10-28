@@ -55,10 +55,72 @@ export function parseRawExamText(
     .replace(/([^\n])\s+((?:Câu|Question|Bài)\s*\d+)/gi, '$1\n$2')
     .trim();
 
-  // 1. Separate "HƯỚNG DẪN GIẢI CHI TIẾT" / "LỜI GIẢI CHI TIẾT" / "GIẢI CHI TIẾT" if present
   let mainExamText = normalizedText;
   let solutionText = '';
+  const answerKeyMap: Record<number, string> = {};
+  const essayAnswerKeyMap: Record<number, string> = {};
+  const explanationMap: Record<number, string> = {};
 
+  // 1. Detect if answers are placed after the last "HẾT" of the exam
+  // Format:
+  // - Trắc nghiệm: 1.D (e.g. 1.D  2.B  3.A ...)
+  // - Tự luận: câu 37. câu trả lời
+  const hetRegex = /(?:\n|^)\s*(?:[-=*~_#]{2,}\s*)?HẾT(?:\s*[-=*~_#]{2,})?\s*(?:\.|\b)(?:[^\n]*)/gi;
+  let lastHetMatch: RegExpExecArray | null = null;
+  let matchHet: RegExpExecArray | null;
+  while ((matchHet = hetRegex.exec(normalizedText)) !== null) {
+    if (matchHet.index > 50) {
+      lastHetMatch = matchHet;
+    }
+  }
+
+  let textAfterHet = '';
+  if (lastHetMatch) {
+    const candidateAfter = normalizedText.slice(lastHetMatch.index + lastHetMatch[0].length).trim();
+    // Check if after HẾT there are answers: "1.D", "câu 37.", "ĐÁP ÁN", etc.
+    const hasAnswersAfter = 
+      /(?:(?:câu|bài|question)\s*\d+|\b\d+\b)[\.:\s\-–—]+(?:[A-D]\b|[\s\S]{3,})/i.test(candidateAfter) ||
+      /(?:ĐÁP\s*ÁN|BẢNG\s*ĐÁP\s*ÁN|LỜI\s*GIẢI|HƯỚNG\s*DẪN)/i.test(candidateAfter);
+
+    if (hasAnswersAfter) {
+      textAfterHet = candidateAfter;
+      mainExamText = normalizedText.slice(0, lastHetMatch.index).trim();
+    }
+  }
+
+  // Parse answers after HẾT
+  if (textAfterHet) {
+    // 1a. Multiple Choice answers (1.D, 1-D, 1: D, Câu 1. D, 1. D)
+    const mcMatches = textAfterHet.matchAll(/(?:(?:câu|bài|question)\s*|(?:\b|^))(\d+)[\.\s:_\-–—]+([A-D])\b(?!\s*[\w\u00C0-\u024F])/gi);
+    for (const match of mcMatches) {
+      const qNum = parseInt(match[1], 10);
+      const opt = match[2].toUpperCase();
+      if (!isNaN(qNum) && opt) {
+        answerKeyMap[qNum] = opt;
+      }
+    }
+
+    // 1b. Essay answers (câu 37. câu trả lời, Câu 37: câu trả lời, 37. câu trả lời)
+    const essayMatches = textAfterHet.matchAll(/(?:^|\n)\s*(?:(?:câu|bài|question)\s*(\d+)|\b(\d+)\b)\s*[\.:\s\-–—]+\s*([\s\S]*?)(?=(?:\n\s*(?:(?:câu|bài|question)\s*\d+|\b\d+\b)\s*[\.:\s\-–—]+)|$)/gi);
+    for (const match of essayMatches) {
+      const qNum = parseInt(match[1] || match[2], 10);
+      let content = match[3].trim();
+      content = content.replace(/(?:---+|\*\*\*+|===+)?\s*(?:HƯỚNG\s*DẪN|CÁN\s*BỘ\s*COI\s*THI|THÍ\s*SINH)[\s\S]*$/i, '').trim();
+
+      if (!isNaN(qNum) && content) {
+        if (/^[A-D]$/i.test(content)) {
+          if (!answerKeyMap[qNum]) {
+            answerKeyMap[qNum] = content.toUpperCase();
+          }
+        } else {
+          essayAnswerKeyMap[qNum] = content;
+          explanationMap[qNum] = content;
+        }
+      }
+    }
+  }
+
+  // 2. Separate "HƯỚNG DẪN GIẢI CHI TIẾT" / "LỜI GIẢI CHI TIẾT" / "GIẢI CHI TIẾT" if present in mainExamText
   const solutionHeaderRegex = /(?:\n|^)\s*(?:HƯỚNG\s*DẪN\s*GIẢI\s*CHI\s*TIẾT|LỜI\s*GIẢI\s*CHI\s*TIẾT|GIẢI\s*CHI\s*TIẾT|HƯỚNG\s*DẪN\s*CHẤM\s*CHI\s*TIẾT|ĐÁP\s*ÁN\s*CHI\s*TIẾT)[\s:_\-]*\n?/i;
   const solutionSplitIndex = mainExamText.search(solutionHeaderRegex);
   if (solutionSplitIndex !== -1) {
@@ -66,17 +128,15 @@ export function parseRawExamText(
     mainExamText = mainExamText.slice(0, solutionSplitIndex);
   }
 
-  // 2. Extract "BẢNG ĐÁP ÁN" / "ĐÁP ÁN" table at the bottom of the exam if present
-  // Matches formats: "1-D 2-C 3-B", "1.A 2.B", "1: A 2: B", "1A 2B", "Câu 1: A"
-  const answerKeyMap: Record<number, string> = {};
+  // 3. Extract "BẢNG ĐÁP ÁN" / "ĐÁP ÁN" table in mainExamText if present
   const answerKeyHeaderRegex = /(?:\n|^)\s*(?:BẢNG\s*ĐÁP\s*ÁN|PHIẾU\s*ĐÁP\s*ÁN|ĐÁP\s*ÁN\s*(?:TRẮC\s*NGHIỆM)?|ANSWER\s*KEY)[\s:_\-]*\n?/i;
   const answerKeyIndex = mainExamText.search(answerKeyHeaderRegex);
   if (answerKeyIndex !== -1) {
     const keySection = mainExamText.slice(answerKeyIndex);
     mainExamText = mainExamText.slice(0, answerKeyIndex);
 
-    // Extract all matches like "1-D", "1.D", "1: D", "1. D", "Câu 1. D", "1 D"
-    const keyMatches = keySection.matchAll(/(?:câu\s*|question\s*)?(\d+)[\.\s:_\-–—]+([A-D])/gi);
+    // Multiple choice in keySection
+    const keyMatches = keySection.matchAll(/(?:(?:câu|bài|question)\s*|(?:\b|^))(\d+)[\.\s:_\-–—]+([A-D])\b(?!\s*[\w\u00C0-\u024F])/gi);
     for (const match of keyMatches) {
       const qNum = parseInt(match[1], 10);
       const opt = match[2].toUpperCase();
@@ -84,10 +144,20 @@ export function parseRawExamText(
         answerKeyMap[qNum] = opt;
       }
     }
+
+    // Essay answers in keySection (câu 37. câu trả lời)
+    const essayKeyMatches = keySection.matchAll(/(?:^|\n)\s*(?:câu|bài|question)\s*(\d+)[\.:\s\-–—]+\s*([\s\S]*?)(?=(?:\n\s*(?:câu|bài|question)\s*\d+[\.:\s\-–—]+)|$)/gi);
+    for (const match of essayKeyMatches) {
+      const qNum = parseInt(match[1], 10);
+      const content = match[2].trim();
+      if (!isNaN(qNum) && content && !/^[A-D]$/i.test(content)) {
+        essayAnswerKeyMap[qNum] = content;
+        explanationMap[qNum] = content;
+      }
+    }
   }
 
-  // 3. Extract Detailed Explanations by Question number from solutionText
-  const explanationMap: Record<number, string> = {};
+  // 4. Extract Detailed Explanations by Question number from solutionText
   if (solutionText) {
     const solBlocks = solutionText.matchAll(/(?:^|\n)\s*(?:(?:(?:Câu|Question|Bài)\s*(\d+)|(\d+))\s*(?:\([^)]{1,25}\)|\[[^\]]{1,25}\])?\s*[\.:\s\-–—]+)([\s\S]*?)(?=(?:\n\s*(?:(?:(?:Câu|Question|Bài)\s*\d+|\d+)\s*(?:\([^)]{1,25}\)|\[[^\]]{1,25}\])?\s*[\.:\s\-–—]+)|$))/gi);
     for (const match of solBlocks) {
@@ -97,6 +167,9 @@ export function parseRawExamText(
       solContent = solContent.replace(/(?:---+|\*\*\*+|===+)?\s*(?:HẾT|THE\s*END|CÁN\s*BỘ\s*COI\s*THI|THÍ\s*SINH)[\s\S]*$/i, '').trim();
       if (!isNaN(qNum) && solContent) {
         explanationMap[qNum] = solContent;
+        if (!essayAnswerKeyMap[qNum]) {
+          essayAnswerKeyMap[qNum] = solContent;
+        }
 
         // Also check if answer is in explanation e.g. "Chọn D.", "Chọn đáp án C"
         const inlineSelectMatch = solContent.match(/(?:Chọn|Đáp\s*án(?:\s*đúng)?(?:\s*là)?|Chọn\s*đáp\s*án)[\s:_\-]*([A-D])\b/i);
@@ -150,10 +223,24 @@ export function parseRawExamText(
   }
 
   // 6. Parse questions
-  const { mcQuestions: parsedMcQuestions, fallbackEssayQuestions } = parseMultipleChoiceBlocks(mcText, answerKeyMap, explanationMap, imageMap, defaultImages);
+  const { mcQuestions: parsedMcQuestions, fallbackEssayQuestions } = parseMultipleChoiceBlocks(
+    mcText, 
+    answerKeyMap, 
+    explanationMap, 
+    imageMap, 
+    defaultImages,
+    essayAnswerKeyMap
+  );
   const parsedEssayQuestions: Question[] = [
     ...fallbackEssayQuestions,
-    ...parseEssayBlocks(essayText, parsedMcQuestions.length + fallbackEssayQuestions.length, explanationMap, imageMap, defaultImages)
+    ...parseEssayBlocks(
+      essayText, 
+      parsedMcQuestions.length + fallbackEssayQuestions.length, 
+      explanationMap, 
+      imageMap, 
+      defaultImages,
+      essayAnswerKeyMap
+    )
   ];
 
   const allQuestions: Question[] = [...parsedMcQuestions, ...parsedEssayQuestions];
@@ -250,7 +337,8 @@ function parseSingleEssayBlock(
   levelTag?: string,
   explanationMap?: Record<number, string>,
   imageMap?: Record<string, string>,
-  defaultImages?: string[]
+  defaultImages?: string[],
+  essayAnswerKeyMap?: Record<number, string>
 ): Question | null {
   // Skip section header title lines
   if (/^(?:PHẦN\s*)?TỰ\s*LUẬN/i.test(blockContent) && blockContent.length < 50) {
@@ -270,7 +358,7 @@ function parseSingleEssayBlock(
   }
 
   // Extract Model Answer / Rubric
-  let modelAnswer = explanationMap?.[qNum] || '';
+  let modelAnswer = essayAnswerKeyMap?.[qNum] || explanationMap?.[qNum] || '';
   let questionText = blockContent;
 
   const answerSplitMatch = blockContent.match(/(?:(?:Đáp\s*án|Hướng\s*dẫn\s*chấm|Biểu\s*điểm|Barem|Lời\s*giải)[\s:_\-]*)([\s\S]*)/i);
@@ -338,7 +426,8 @@ function parseMultipleChoiceBlocks(
   answerKeyMap: Record<number, string>, 
   explanationMap: Record<number, string>,
   imageMap?: Record<string, string>,
-  defaultImages?: string[]
+  defaultImages?: string[],
+  essayAnswerKeyMap?: Record<number, string>
 ): { mcQuestions: Question[]; fallbackEssayQuestions: Question[] } {
   const mcQuestions: Question[] = [];
   const fallbackEssayQuestions: Question[] = [];
@@ -369,7 +458,7 @@ function parseMultipleChoiceBlocks(
         autoOrder++;
       }
     } else {
-      const parsedEssay = parseSingleEssayBlock(blockContent, autoOrder, qNum, levelTag, explanationMap, imageMap, defaultImages);
+      const parsedEssay = parseSingleEssayBlock(blockContent, autoOrder, qNum, levelTag, explanationMap, imageMap, defaultImages, essayAnswerKeyMap);
       if (parsedEssay) {
         fallbackEssayQuestions.push(parsedEssay);
         autoOrder++;
@@ -618,7 +707,8 @@ function parseEssayBlocks(
   startIndex: number,
   explanationMap: Record<number, string>,
   imageMap?: Record<string, string>,
-  defaultImages?: string[]
+  defaultImages?: string[],
+  essayAnswerKeyMap?: Record<number, string>
 ): Question[] {
   if (!text.trim()) return [];
 
@@ -634,7 +724,7 @@ function parseEssayBlocks(
     const levelTag = (match[3] || match[4] || match[5] || match[6] || '').trim();
     const blockContent = match[7].trim();
 
-    const parsedEssay = parseSingleEssayBlock(blockContent, autoOrder, qNum, levelTag, explanationMap, imageMap, defaultImages);
+    const parsedEssay = parseSingleEssayBlock(blockContent, autoOrder, qNum, levelTag, explanationMap, imageMap, defaultImages, essayAnswerKeyMap);
     if (parsedEssay) {
       questions.push(parsedEssay);
       autoOrder++;
@@ -646,13 +736,16 @@ function parseEssayBlocks(
     const rawParagraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 10);
     rawParagraphs.forEach((p, idx) => {
       if (/^(?:PHẦN\s*)?TỰ\s*LUẬN/i.test(p)) return;
+      const order = startIndex + idx + 1;
+      const fbAnswer = essayAnswerKeyMap?.[order] || explanationMap?.[order] || 'Đáp án & Biểu điểm tự luận do giáo viên cung cấp.';
       questions.push({
         id: `q_essay_fb_${idx + 1}_${Date.now()}`,
-        order: startIndex + idx + 1,
+        order,
         type: 'essay',
         text: p.trim(),
         options: [],
-        modelAnswer: 'Đáp án & Biểu điểm tự luận do giáo viên cung cấp.',
+        modelAnswer: fbAnswer,
+        explanation: fbAnswer,
         points: 2
       });
     });
@@ -804,8 +897,13 @@ Câu 7 (1đ). Giải phương trình nâng cao sau:
 <=> x = 2019, x = 2021 hoặc x = 2010. (0.5đ)
 
 ----------------------Hết------------------------
-Đáp án Trắc nghiệm
-1.D  2.B  3.D  4.B`
+
+ĐÁP ÁN
+1.D  2.B  3.D  4.B
+
+câu 5. 1) x = 2. 2) Vô số nghiệm. 3) x = 9 hoặc x = -1. 4) x = 0 (thỏa mãn ĐKXĐ).
+câu 6. Vận tốc xe máy: 40 km/h. Quãng đường còn lại: 200 km. Thời gian hai xe cùng đi đến khi gặp nhau: 2 giờ. Thời điểm gặp nhau: 9h sáng.
+câu 7. Đặt a = 2019 - x, b = 2021 - x, c = 2x - 4020. Khi a + b + c = 0 thì a^3 + b^3 + c^3 = 3abc. Phương trình có 3 nghiệm: x = 2019, x = 2021 hoặc x = 2010.`
   },
   {
     id: 'sample_anh_thpt',
@@ -1030,43 +1128,18 @@ Câu 42(VDC): Em hãy kể một ví dụ về tin đồn(trong cuộc sống ho
 Thí sinh không được sử dụng tài liệu. Cán bộ coi thi không giải thích gì thêm
 
 ĐÁP ÁN
- 1.A	2.B	3.B	4.C	5.C	6.D	7.B	8.C
- 9.A	10.B	11.A	12.C	13.D	14.B	15.C	16.C
- 17.C	18.D	19.A	20.A	21.C	22.C	23.B	24.B
- 25.A	26.D	27.D	28.B	29.C	30.D	31.C	32.B
- 33.A	34.B	35.A	36.D
+1.A  2.B  3.B  4.C  5.C  6.D  7.B  8.C
+9.A  10.B  11.A  12.C  13.D  14.B  15.C  16.C
+17.C  18.D  19.A  20.A  21.C  22.C  23.B  24.B
+25.A  26.D  27.D  28.B  29.C  30.D  31.C  32.B
+33.A  34.B  35.A  36.D
 
-HƯỚNG DẪN GIẢI CHI TIẾT
-Câu 37: 
-- Quay phim trong rạp chiếu phim.
-- Chụp ảnh ở nơi không cho phép (Hình 4.1 SGK trang 19)
-- Ghi âm trái phép các cuộc nói chuyện.
-- Tải về máy tính cá nhân các tệp bài hát, video có bản quyền để sử dụng mà chưa được phép.
-- Sao chép thông tin từ một trang web và coi đó là của mình.
-- Sử dụng phần mềm bẻ khoá.
-- Phát trực tiếp (livestream) hoặc chia sẻ các vụ bạo lực học đường. Đưa lên mạng thông tin cá nhân của người khác mà chưa được phép…
-- Tham gia, chia sẻ, quảng cáo cho các trang web cổ vũ bạo lực, đánh bạc…
-(Học sinh chỉ cần nêu đúng 3 biểu hiện)
-Câu 38: 
-- Học sinh sẽ đưa ra một vài địa chỉ trang web.
-- Nguồn thông tin đáng tin cậy nhất là thông tin tư cơ quan chính phủ.
-Câu 39: 
-- An làm không đúng.
-- Vì An đã sử dụng ảnh của Khoa mà không có sự cho phép của Khoa.
-Câu 40: Thông tin số có những đặc điểm chính nào?
-Thông tin số có những đặc điểm chính như sau:
-- Thông tin số dễ dàng được nhân bản và lan truyền nhưng khó bị xóa bỏ hoàn toàn
-- Thông tin số có thể được truy cập từ xa nếu người quản lý thông tin đó cho phép
-Câu 41:Làm thế nào để  xác định được thông tin có  đáng tin cậy hay không?
-* Làm thế nào để  xác định được thông tin có  đáng tin cậy hay không?  
-Để  xác định được thông tin có  đáng tin cậy hay không, ta cần:
-- Kiểm tra nguồn thông tin
-- Phân biệt ý kiến với sự kiện
-- Kiểm tra chứng cứ của kết luận
-- Đánh giá tính thời sự của thông tin
-Câu 42: 
-Ví dụ : Tin đồn về tác dụng của thuốc chữa bệnh Covid 19.
-Tác hại: mất tiền và thêm bệnh.`
+câu 37. Học sinh nêu được 3 biểu hiện vi phạm đạo đức và pháp luật khi sử dụng công nghệ số như: quay phim chụp ảnh nơi cấm; ghi âm trái phép các cuộc nói chuyện; tải về và sao chép các tệp bài hát, video có bản quyền chưa được phép; sử dụng phần mềm bẻ khoá; phát trực tiếp các vụ bạo lực học đường; chia sẻ trang web độc hại... (Học sinh nêu đúng 3 biểu hiện).
+câu 38. Học sinh đưa ra được một vài địa chỉ trang web tìm kiếm về năng lượng tái tạo. Nguồn thông tin đáng tin cậy nhất là thông tin từ các cơ quan chính phủ (.gov) hoặc tổ chức uy tín.
+câu 39. An làm không đúng. Vì An đã tự ý sửa và sử dụng ảnh của Khoa mà không có sự cho phép của Khoa (vi phạm bản quyền và đạo đức sử dụng thông tin số).
+câu 40. Thông tin số có những đặc điểm chính: Dễ dàng được nhân bản và lan truyền nhanh chóng nhưng khó bị xóa bỏ hoàn toàn; Có thể được truy cập từ xa nếu người quản lý thông tin đó cho phép.
+câu 41. Để xác định thông tin có đáng tin cậy hay không: Kiểm tra nguồn thông tin; Phân biệt ý kiến với sự kiện; Kiểm tra chứng cứ của kết luận; Đánh giá tính thời sự của thông tin.
+câu 42. Ví dụ: Tin đồn về tác dụng của thuốc tự chế chữa khỏi Covid-19 lan truyền trên mạng xã hội. Tác hại: Khiến người dân hoang mang, mất tiền mua thuốc giả và gây hại nghiêm trọng cho sức khỏe.`
   }
 ];
 

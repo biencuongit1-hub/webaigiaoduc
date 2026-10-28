@@ -285,3 +285,49 @@ export function subscribeToUserProfiles(callback: (profiles: UserProfile[]) => v
   );
 }
 
+// Find user in Firestore by credential (username, email, or phone)
+export async function findUserInFirestore(identifier: string): Promise<UserProfile | null> {
+  const path = 'users';
+  try {
+    const cleanId = identifier.trim().toLowerCase();
+    const cleanPhone = cleanId.replace(/\s+/g, '');
+    const snapshot = await getDocs(collection(db, path));
+    for (const docSnap of snapshot.docs) {
+      const u = docSnap.data() as UserProfile;
+      if (
+        (u.username && u.username.toLowerCase() === cleanId) ||
+        (u.email && u.email.toLowerCase() === cleanId) ||
+        (u.phoneNumber && u.phoneNumber.replace(/\s+/g, '') === cleanPhone)
+      ) {
+        return u;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.warn('[Firebase] Lỗi tìm tài khoản trong Firestore:', error);
+    return null;
+  }
+}
+
+// Check if username or email already exists in Firestore database
+export async function checkCredentialExistsInFirestore(username: string, email?: string): Promise<{ exists: boolean; reason?: string }> {
+  try {
+    const cleanUser = username.trim().toLowerCase();
+    const cleanEmail = email ? email.trim().toLowerCase() : '';
+    const snapshot = await getDocs(collection(db, 'users'));
+    for (const docSnap of snapshot.docs) {
+      const u = docSnap.data() as UserProfile;
+      if (u.username && u.username.toLowerCase() === cleanUser) {
+        return { exists: true, reason: `Tên tài khoản "${username}" đã có người đăng ký trong Database.` };
+      }
+      if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) {
+        return { exists: true, reason: `Email "${email}" đã được sử dụng cho tài khoản khác trong Database.` };
+      }
+    }
+    return { exists: false };
+  } catch {
+    return { exists: false };
+  }
+}
+
+

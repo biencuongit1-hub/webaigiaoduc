@@ -47,7 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenExamByCode,
   examsCount = 0
 }) => {
-  const isTeacher = userRole === 'teacher';
+  const isTeacher = currentUser?.role === 'teacher' && userRole === 'teacher';
   const isLoggedIn = currentUser !== null;
 
   return (
@@ -174,48 +174,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <FileSpreadsheet className="w-4 h-4" />
                     Quản lý & Điểm số
                   </button>
-
-                  <button
-                    id="tab-ai-assistant"
-                    onClick={() => onSelectTab('ai_assistant')}
-                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      currentTab === 'ai_assistant'
-                        ? 'bg-amber-50 text-amber-700 font-bold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Bot className="w-4 h-4 text-amber-600" />
-                    Trợ lý AI
-                  </button>
-
-                  <button
-                    id="tab-games"
-                    onClick={() => onSelectTab('games')}
-                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      currentTab === 'games'
-                        ? 'bg-purple-50 text-purple-700 font-bold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Gamepad2 className="w-4 h-4" />
-                    Game lớp học
-                  </button>
-
-                  <button
-                    id="tab-360"
-                    onClick={() => onSelectTab('vr360')}
-                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      currentTab === 'vr360'
-                        ? 'bg-indigo-50 text-indigo-700 font-bold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Compass className="w-4 h-4" />
-                    Bài giảng 360°
-                  </button>
                 </>
               ) : (
-                /* STUDENT MENUS */
+                /* STUDENT MENUS - STREAMLINED EXAM & SCORECARD */
                 <>
                   <button
                     id="tab-student-portal"
@@ -231,19 +192,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
 
                   <button
-                    id="tab-student-study"
-                    onClick={() => onSelectTab('student_study')}
-                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      currentTab === 'student_study'
-                        ? 'bg-blue-600 text-white shadow-xs font-bold'
-                        : 'text-slate-700 hover:text-blue-700 hover:bg-blue-50'
-                    }`}
-                  >
-                    <BookOpen className="w-4 h-4" />
-                    Góc học tập & Ôn luyện
-                  </button>
-
-                  <button
                     id="tab-student-history"
                     onClick={() => onSelectTab('student_history')}
                     className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -254,32 +202,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <Award className="w-4 h-4" />
                     Lịch sử & Điểm số
-                  </button>
-
-                  <button
-                    id="tab-student-games"
-                    onClick={() => onSelectTab('games')}
-                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      currentTab === 'games'
-                        ? 'bg-purple-600 text-white shadow-xs font-bold'
-                        : 'text-slate-700 hover:text-purple-700 hover:bg-purple-50'
-                    }`}
-                  >
-                    <Gamepad2 className="w-4 h-4" />
-                    Game học tập
-                  </button>
-
-                  <button
-                    id="tab-student-vr"
-                    onClick={() => onSelectTab('vr360')}
-                    className={`px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      currentTab === 'vr360'
-                        ? 'bg-indigo-600 text-white shadow-xs font-bold'
-                        : 'text-slate-700 hover:text-indigo-700 hover:bg-indigo-50'
-                    }`}
-                  >
-                    <Compass className="w-4 h-4" />
-                    Lớp học 360°
                   </button>
                 </>
               )}
@@ -470,30 +392,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   Quản lý đề
                 </button>
-                <button
-                  onClick={() => onSelectTab('ai_assistant')}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                    currentTab === 'ai_assistant' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700'
-                  }`}
-                >
-                  Trợ lý AI
-                </button>
-                <button
-                  onClick={() => onSelectTab('games')}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                    currentTab === 'games' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'
-                  }`}
-                >
-                  Game
-                </button>
-                <button
-                  onClick={() => onSelectTab('vr360')}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                    currentTab === 'vr360' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700'
-                  }`}
-                >
-                  360°
-                </button>
               </>
             ) : (
               <>
@@ -507,38 +405,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Làm bài thi
                 </button>
                 <button
-                  onClick={() => onSelectTab('student_study')}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
-                    currentTab === 'student_study' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'
-                  }`}
-                >
-                  <BookOpen className="w-3 h-3" />
-                  Ôn luyện
-                </button>
-                <button
                   onClick={() => onSelectTab('student_history')}
                   className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium flex items-center gap-1 ${
                     currentTab === 'student_history' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700'
                   }`}
                 >
                   <Award className="w-3 h-3" />
-                  Lịch sử
-                </button>
-                <button
-                  onClick={() => onSelectTab('games')}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                    currentTab === 'games' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700'
-                  }`}
-                >
-                  Game
-                </button>
-                <button
-                  onClick={() => onSelectTab('vr360')}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap font-medium ${
-                    currentTab === 'vr360' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700'
-                  }`}
-                >
-                  360°
+                  Lịch sử & Điểm số
                 </button>
               </>
             )}

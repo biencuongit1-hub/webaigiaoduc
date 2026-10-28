@@ -25,8 +25,6 @@ import {
   X
 } from 'lucide-react';
 import { Exam, ExamSubmission, UserProfile } from '../types';
-import { InteractiveGames } from './InteractiveGames';
-import { Virtual360Space } from './Virtual360Space';
 
 export interface StudentPortalProps {
   currentUser: UserProfile;
@@ -45,11 +43,17 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   onJoinExamByCode,
   onOpenAccountModal
 }) => {
-  // Student navigation tabs
-  const [activeMenu, setActiveMenu] = useState<'exams' | 'study' | 'history' | 'games' | 'vr360'>('exams');
+  // Student navigation tabs: exams and history
+  const [activeMenu, setActiveMenu] = useState<'exams' | 'history'>('exams');
   
-  // Grade filter state - Defaults to student's registered grade
-  const [selectedGrade, setSelectedGrade] = useState<string>(currentUser.grade || 'Lớp 9');
+  // Grade filter state - Defaults to student's registered grade (Khối 8, Khối 9, etc.)
+  const defaultGrade = useMemo(() => {
+    const raw = currentUser.grade || 'Khối 8';
+    const numMatch = raw.match(/\d+/);
+    return numMatch ? `Khối ${numMatch[0]}` : raw;
+  }, [currentUser.grade]);
+
+  const [selectedGrade, setSelectedGrade] = useState<string>(defaultGrade);
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [quickCode, setQuickCode] = useState('');
@@ -60,22 +64,47 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const [historyFilter, setHistoryFilter] = useState<'all' | 'graded' | 'pending'>('all');
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
-  // Practice question state for Study Corner
-  const [practiceSubject, setPracticeSubject] = useState<string>('Toán học');
-  const [practiceAnswers, setPracticeAnswers] = useState<Record<string, string>>({});
-  const [revealedSolutions, setRevealedSolutions] = useState<Record<string, boolean>>({});
+  // List of distinct grades - Candidate chooses their specific grade
+  const gradesList = ['Khối 6', 'Khối 7', 'Khối 8', 'Khối 9', 'Khối 10', 'Khối 11', 'Khối 12'];
 
-  const gradesList = ['Tất cả', 'Lớp 6', 'Lớp 7', 'Lớp 8', 'Lớp 9', 'Lớp 10', 'Lớp 11', 'Lớp 12'];
+  // Helper: check if an exam matches the candidate's selected grade
+  const checkMatchesGrade = (exam: Exam, targetGrade: string): boolean => {
+    const targetNum = targetGrade.match(/\d+/)?.[0];
+    if (!targetNum) return false;
 
-  // Filter exams for student
+    // Exams marked for all grades
+    if (exam.grade === 'Tất cả các khối' || (exam.allowedGrades && exam.allowedGrades.includes('all'))) {
+      return true;
+    }
+
+    // Match exam.grade (e.g. "Lớp 8", "Khối 8", "8")
+    const examGradeNum = exam.grade?.match(/\d+/)?.[0];
+    if (examGradeNum && examGradeNum === targetNum) return true;
+
+    // Match exam.targetClass (e.g. "Khối 8", "8A1")
+    const classNum = exam.targetClass?.match(/\d+/)?.[0];
+    if (classNum && classNum === targetNum) return true;
+
+    // Match exam.allowedGrades array
+    if (exam.allowedGrades && exam.allowedGrades.length > 0) {
+      const inAllowed = exam.allowedGrades.some((g) => g.match(/\d+/)?.[0] === targetNum);
+      if (inAllowed) return true;
+    }
+
+    // Keyword in title/description (e.g. "Tin học 8", "Toán 8")
+    const pattern = new RegExp(`(?:lớp|khối|k)?\\s*${targetNum}\\b`, 'i');
+    if (pattern.test(exam.title) || (exam.description && pattern.test(exam.description))) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Filter exams strictly: Candidate ONLY sees exams belonging to the selected grade
   const filteredExams = useMemo(() => {
     return exams.filter((exam) => {
-      // 1. Grade Restriction logic
-      const isAllowedByGrade = 
-        selectedGrade === 'Tất cả' ||
-        exam.grade === 'Tất cả các khối' ||
-        exam.grade === selectedGrade ||
-        (exam.allowedGrades && (exam.allowedGrades.includes('all') || exam.allowedGrades.includes(selectedGrade)));
+      // 1. Strict Grade match
+      const isAllowedByGrade = checkMatchesGrade(exam, selectedGrade);
 
       // 2. Subject filter
       const matchesSubject = selectedSubject === 'all' || exam.subject === selectedSubject;
@@ -91,10 +120,10 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
     });
   }, [exams, selectedGrade, selectedSubject, searchTerm]);
 
-  // Exams strictly for this grade vs other grades
+  // Target grade exams
   const targetGradeExams = useMemo(() => {
-    return filteredExams.filter(e => e.grade === selectedGrade || e.grade === 'Tất cả các khối');
-  }, [filteredExams, selectedGrade]);
+    return filteredExams;
+  }, [filteredExams]);
 
   // Student's personal submissions
   const mySubmissions = useMemo(() => {
@@ -122,68 +151,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
   const highestScore = completedCount > 0
     ? Math.max(...mySubmissions.map(s => s.score))
     : 0;
-
-  // Study corner practice questions sample
-  const samplePracticeQuestions = useMemo(() => {
-    return [
-      {
-        id: 'pr_1',
-        subject: 'Toán học',
-        grade: 'Lớp 9',
-        question: 'Tìm nghiệm của phương trình x² - 4x + 3 = 0 bằng cách phân tích thành nhân tử.',
-        options: [
-          { id: 'A', text: 'x = 1 hoặc x = 3' },
-          { id: 'B', text: 'x = -1 hoặc x = -3' },
-          { id: 'C', text: 'x = 2 hoặc x = 3' },
-          { id: 'D', text: 'x = -1 hoặc x = 3' }
-        ],
-        correct: 'A',
-        explanation: 'Ta có x² - 4x + 3 = (x - 1)(x - 3) = 0 => x = 1 hoặc x = 3.'
-      },
-      {
-        id: 'pr_2',
-        subject: 'Toán học',
-        grade: 'Lớp 9',
-        question: 'Góc tạo bởi tia tiếp tuyến và dây cung có số đo bằng bao nhiêu so với góc ở tâm cùng chắn một cung?',
-        options: [
-          { id: 'A', text: 'Bằng số đo góc ở tâm' },
-          { id: 'B', text: 'Bằng một nửa số đo góc ở tâm' },
-          { id: 'C', text: 'Gấp đôi số đo góc ở tâm' },
-          { id: 'D', text: 'Bằng 90 độ' }
-        ],
-        correct: 'B',
-        explanation: 'Số đo của góc tạo bởi tia tiếp tuyến và dây cung bằng một nửa số đo của cung bị chắn, tức bằng nửa góc ở tâm chắn cung đó.'
-      },
-      {
-        id: 'pr_3',
-        subject: 'Vật lý',
-        grade: 'Lớp 9',
-        question: 'Công thức tính công suất điện của một đoạn mạch là:',
-        options: [
-          { id: 'A', text: 'P = U / I' },
-          { id: 'B', text: 'P = U . I' },
-          { id: 'C', text: 'P = U² . I' },
-          { id: 'D', text: 'P = I² / U' }
-        ],
-        correct: 'B',
-        explanation: 'Công suất điện của một đoạn mạch bằng tích của hiệu điện thế giữa hai đầu đoạn mạch và cường độ dòng điện chạy qua nó: P = U.I.'
-      },
-      {
-        id: 'pr_4',
-        subject: 'Tiếng Anh',
-        grade: 'Lớp 9',
-        question: 'Choose the best word: "If she _______ hard, she will pass the entrance exam with high scores."',
-        options: [
-          { id: 'A', text: 'study' },
-          { id: 'B', text: 'studies' },
-          { id: 'C', text: 'studied' },
-          { id: 'D', text: 'will study' }
-        ],
-        correct: 'B',
-        explanation: 'Câu điều kiện loại 1: Mệnh đề If dùng thì Hiện tại đơn (she + V-s/es -> studies), mệnh đề chính dùng will + V.'
-      }
-    ].filter(q => practiceSubject === 'all' || q.subject === practiceSubject);
-  }, [practiceSubject]);
 
   return (
     <div className="space-y-6 pb-16">
@@ -286,19 +253,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveMenu('study')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeMenu === 'study'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>Góc Học Tập & Ôn Luyện</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setActiveMenu('history')}
             className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
               activeMenu === 'history'
@@ -307,33 +261,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
             }`}
           >
             <Award className="w-4 h-4" />
-            <span>Lịch Sử Bài Làm ({mySubmissions.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMenu('games')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeMenu === 'games'
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Gamepad2 className="w-4 h-4" />
-            <span>Game Học Tập</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMenu('vr360')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-              activeMenu === 'vr360'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Compass className="w-4 h-4" />
-            <span>Lớp Học 360° VR</span>
+            <span>Lịch Sử Bài Làm & Bảng Điểm ({mySubmissions.length})</span>
           </button>
         </div>
 
@@ -429,6 +357,22 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
             </div>
           </div>
 
+          {/* Active Grade Filter Indicator */}
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-bold text-slate-800">
+                Đang hiển thị đề thi dành riêng cho: <span className="text-emerald-700 font-black">{selectedGrade}</span>
+              </span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                {filteredExams.length} đề thi
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500 hidden sm:block">
+              Hệ thống lọc theo khối học thí sinh lựa chọn
+            </span>
+          </div>
+
           {/* Exam Cards Grid */}
           {filteredExams.length === 0 ? (
             <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-3">
@@ -436,22 +380,11 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                 <FileText className="w-6 h-6" />
               </div>
               <h3 className="font-bold text-slate-800 text-sm">
-                Chưa có đề thi nào phù hợp cho {selectedGrade}
+                Chưa có đề thi nào cho {selectedGrade}
               </h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Thầy cô chưa giao đề cho khối này hoặc bạn đang tìm kiếm với từ khóa không khớp. Bạn có thể chọn "Tất cả" hoặc nhập mã đề thi nếu được cấp riêng.
+                Thầy cô chưa phát hành đề thi mở cho {selectedGrade}. Thí sinh có thể bấm chọn một khối khác ở thanh chọn khối phía trên hoặc nhập mã đề thi nếu được cấp riêng.
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedGrade('Tất cả');
-                  setSelectedSubject('all');
-                  setSearchTerm('');
-                }}
-                className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold"
-              >
-                Xem tất cả các đề thi
-              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -580,112 +513,7 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
       )}
 
       {/* ======================================================== */}
-      {/* TAB 2: STUDY CORNER & PRACTICE (GÓC HỌC TẬP & ÔN TẬP)    */}
-      {/* ======================================================== */}
-      {activeMenu === 'study' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-              <div>
-                <h2 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-blue-600" />
-                  Góc Tự Học & Luyện Tập Chuyên Đề
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Luyện tập các câu hỏi mẫu có lời giải chi tiết để củng cố kiến thức trước các kì thi
-                </p>
-              </div>
-
-              {/* Subject filter for practice */}
-              <div className="flex items-center gap-1.5">
-                {['Toán học', 'Vật lý', 'Tiếng Anh'].map((sub) => (
-                  <button
-                    key={sub}
-                    type="button"
-                    onClick={() => setPracticeSubject(sub)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      practiceSubject === sub
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {sub}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Practice Questions List */}
-            <div className="space-y-4">
-              {samplePracticeQuestions.map((q, idx) => {
-                const selectedOpt = practiceAnswers[q.id];
-                const isRevealed = revealedSolutions[q.id];
-                const isCorrect = selectedOpt === q.correct;
-
-                return (
-                  <div key={q.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-lg">
-                        Câu {idx + 1} • {q.subject}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setRevealedSolutions(prev => ({ ...prev, [q.id]: !prev[q.id] }))}
-                        className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
-                      >
-                        {isRevealed ? 'Ẩn lời giải' : 'Xem lời giải chi tiết'}
-                      </button>
-                    </div>
-
-                    <p className="text-xs sm:text-sm font-semibold text-slate-800">
-                      {q.question}
-                    </p>
-
-                    {/* Options */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                      {q.options.map((opt, optIdx) => {
-                        const isChosen = selectedOpt === opt.id;
-                        let optStyle = 'border-slate-200 bg-white hover:border-blue-300';
-                        if (isChosen) {
-                          optStyle = isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-800 font-bold' : 'border-rose-400 bg-rose-50 text-rose-800 font-bold';
-                        }
-
-                        return (
-                          <button
-                            key={`${q.id}_opt_${opt.id}_${optIdx}`}
-                            type="button"
-                            onClick={() => setPracticeAnswers(prev => ({ ...prev, [q.id]: opt.id }))}
-                            className={`p-3 rounded-xl border text-xs text-left transition-all flex items-center gap-2 cursor-pointer ${optStyle}`}
-                          >
-                            <span className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[11px] shrink-0">
-                              {opt.id}
-                            </span>
-                            <span>{opt.text}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Explanation Box */}
-                    {isRevealed && (
-                      <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 space-y-1">
-                        <span className="font-bold flex items-center gap-1.5 text-blue-800">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          Đáp án đúng: {q.correct}
-                        </span>
-                        <p className="text-slate-700">{q.explanation}</p>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* TAB 3: SUBMISSION HISTORY & RESULTS (LỊCH SỬ BÀI LÀM)    */}
+      {/* TAB 2: SUBMISSION HISTORY & RESULTS (LỊCH SỬ BÀI LÀM)    */}
       {/* ======================================================== */}
       {activeMenu === 'history' && (
         <div className="space-y-6">
@@ -974,16 +802,35 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
                             </div>
                           )}
 
-                          {/* Model Answer / Rubric */}
+                          {/* Model Answer / Rubric - Only show if student reached required min score */}
                           {q.modelAnswer && (
-                            <details className="text-xs text-slate-600 bg-slate-100 p-2.5 rounded-xl">
-                              <summary className="font-bold text-slate-700 cursor-pointer hover:underline">
-                                Xem đáp án mẫu & hướng dẫn chấm
-                              </summary>
-                              <p className="mt-2 whitespace-pre-wrap text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
-                                {q.modelAnswer}
-                              </p>
-                            </details>
+                            (() => {
+                              const minScoreReq = inspectingGradedSub.exam?.settings?.requireMinScoreForReview
+                                ? (inspectingGradedSub.exam.settings.minScoreToShowResult ?? 5.0)
+                                : 0;
+                              const canViewDetail = !inspectingGradedSub.exam?.settings?.requireMinScoreForReview ||
+                                (inspectingGradedSub.sub.score >= minScoreReq);
+
+                              if (!canViewDetail) {
+                                return (
+                                  <div className="text-xs text-amber-800 bg-amber-50/80 p-2.5 rounded-xl border border-amber-200 flex items-center gap-2">
+                                    <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span>Đáp án mẫu bị khóa do điểm bài làm ({inspectingGradedSub.sub.score}đ) chưa đạt mức tối thiểu ({minScoreReq}đ).</span>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <details className="text-xs text-slate-600 bg-slate-100 p-2.5 rounded-xl">
+                                  <summary className="font-bold text-slate-700 cursor-pointer hover:underline">
+                                    Xem đáp án mẫu & hướng dẫn chấm
+                                  </summary>
+                                  <p className="mt-2 whitespace-pre-wrap text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
+                                    {q.modelAnswer}
+                                  </p>
+                                </details>
+                              );
+                            })()
                           )}
                         </div>
                       );
@@ -1004,16 +851,6 @@ export const StudentPortal: React.FC<StudentPortalProps> = ({
           </div>
         </div>
       )}
-
-      {/* ======================================================== */}
-      {/* TAB 4: INTERACTIVE GAMES (GAME HỌC TẬP)                  */}
-      {/* ======================================================== */}
-      {activeMenu === 'games' && <InteractiveGames />}
-
-      {/* ======================================================== */}
-      {/* TAB 5: VIRTUAL 360° SPACE (LỚP HỌC 360°)                */}
-      {/* ======================================================== */}
-      {activeMenu === 'vr360' && <Virtual360Space />}
     </div>
   );
 };

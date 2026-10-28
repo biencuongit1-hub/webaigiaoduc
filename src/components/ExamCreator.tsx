@@ -10,6 +10,10 @@ import {
   AlertCircle, 
   Clock, 
   ShieldAlert, 
+  ShieldCheck,
+  ShieldX,
+  ToggleLeft,
+  ToggleRight,
   Save, 
   Copy, 
   ExternalLink,
@@ -26,12 +30,14 @@ import {
   Image as ImageIcon,
   Camera,
   ZoomIn,
-  X
+  X,
+  Lock
 } from 'lucide-react';
 import { Exam, Question, ExamSettings, QuestionType } from '../types';
 import { parseRawExamText, SAMPLE_RAW_EXAM_MIXED, EXAM_SAMPLE_PRESETS } from '../utils/parser';
 import { extractTextFromFile, extractTextFromFiles, ExtractedDocument } from '../utils/fileExtractor';
 import { generateExamShareUrl } from '../utils/shareUrl';
+import { autoSupplementAnswers, formatAnswersBlock } from '../utils/answerSupplement';
 
 export interface ExamCreatorProps {
   onSaveExam: (exam: Exam) => void;
@@ -75,6 +81,7 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
   // Raw Text State
   const [rawText, setRawText] = useState(SAMPLE_RAW_EXAM_MIXED);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [isAutoSolving, setIsAutoSolving] = useState(false);
 
   // AI Generator Form State
   const [aiTopic, setAiTopic] = useState('Định lý Pytago và Hệ thức lượng trong tam giác vuông');
@@ -96,6 +103,8 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
     shuffleOptions: true,
     showResultImmediately: true,
     showAnswers: true,
+    requireMinScoreForReview: false,
+    minScoreToShowResult: 5.0,
     requireFullName: true,
     requireClass: true,
     requireStudentId: true,
@@ -138,6 +147,47 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
       const withImg = parsed.filter(q => q.image || q.options?.some(o => o.image)).length;
       setDistributionMsg(`Đã bóc tách thành công ${parsed.length} câu hỏi (${parsed.filter(q => q.type !== 'essay').length} trắc nghiệm, ${parsed.filter(q => q.type === 'essay').length} tự luận${withImg > 0 ? `, tự duyệt ${withImg} câu có hình ảnh` : ''})!`);
       setTimeout(() => setDistributionMsg(null), 4000);
+    }
+  };
+
+  // Handle Auto-Supplement Answers after the last "HẾT" of the exam
+  const handleAutoSupplementAnswers = async () => {
+    if (!rawText.trim()) {
+      alert('Vui lòng dán hoặc tải nội dung đề thi trước khi bổ sung đáp án!');
+      return;
+    }
+
+    setIsAutoSolving(true);
+    setParseErrors([]);
+
+    try {
+      const res = await autoSupplementAnswers(rawText);
+      setRawText(res.updatedText);
+
+      // Re-parse with newly supplemented answers
+      const { questions: parsed, multipleChoicePoints: mcPts, essayPoints: esPts, errors } = parseRawExamText(
+        res.updatedText,
+        {
+          imageMap: extractedImageMap,
+          defaultImages: extractedImagesList
+        }
+      );
+      setParseErrors(errors);
+      if (parsed.length > 0) {
+        setQuestions(parsed);
+        if (mcPts !== undefined && mcPts >= 0) setMultipleChoicePoints(mcPts);
+        if (esPts !== undefined && esPts >= 0) setEssayPoints(esPts);
+      }
+
+      setDistributionMsg(
+        `Đã tự động bổ sung đáp án sau chữ HẾT thành công (${res.mcCount} câu trắc nghiệm dạng 1.D, ${res.essayCount} câu tự luận dạng "câu [N]. câu trả lời")!`
+      );
+      setTimeout(() => setDistributionMsg(null), 5000);
+    } catch (err: any) {
+      console.error('Lỗi bổ sung đáp án tự động:', err);
+      alert(err instanceof Error ? err.message : 'Không thể tự động bổ sung đáp án.');
+    } finally {
+      setIsAutoSolving(false);
     }
   };
 
@@ -447,45 +497,74 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
     setIsGeneratingAI(true);
     setTimeout(() => {
       const aiQuestions: Question[] = [];
+      const mcAnswers: Record<number, string> = {};
+      const essayAnswers: Record<number, string> = {};
+
+      let examRawText = `TRƯỜNG THCS NGUYỄN ĐÔN\nĐỀ KIỂM TRA ĐỊNH KỲ\nMôn: ${subject} - ${grade}\nChủ đề: ${aiTopic}\nThời gian làm bài: ${durationMinutes} phút\n\nI. PHẦN TRẮC NGHIỆM (${multipleChoicePoints} điểm)\n`;
+
       // 1. Generate MC
       for (let i = 1; i <= aiMcCount; i++) {
+        const correctLetters: ('A' | 'B' | 'C' | 'D')[] = ['A', 'B', 'C', 'D'];
+        const chosenCorrect = correctLetters[(i - 1) % 4];
+        mcAnswers[i] = chosenCorrect;
+
+        const qText = `Câu hỏi về ${aiTopic}: Khẳng định nào sau đây là đúng về đặc điểm thứ ${i}?`;
+        const qOptions = [
+          { id: 'A', text: `Phương án A: ${chosenCorrect === 'A' ? `Định lý và tính chất chuẩn xác của ${aiTopic}` : `Trường hợp chưa đầy đủ`}` },
+          { id: 'B', text: `Phương án B: ${chosenCorrect === 'B' ? `Định nghĩa chính xác theo chuẩn SGK của ${aiTopic}` : `Phát biểu ngược lại`}` },
+          { id: 'C', text: `Phương án C: ${chosenCorrect === 'C' ? `Tính chất áp dụng đúng trong mọi điều kiện của ${aiTopic}` : `Quy tắc bổ trợ`}` },
+          { id: 'D', text: `Phương án D: ${chosenCorrect === 'D' ? `Hệ thức liên hệ quan trọng nhất của ${aiTopic}` : `Ngoại lệ không thỏa mãn`}` }
+        ];
+
+        examRawText += `\nCâu ${i}: ${qText}\n`;
+        qOptions.forEach(opt => {
+          examRawText += `${opt.id}. ${opt.text}\n`;
+        });
+
         aiQuestions.push({
           id: `q_ai_mc_${i}_${Date.now()}`,
           order: i,
           type: 'multiple_choice',
-          text: `[Trắc nghiệm ${i}] Câu hỏi về ${aiTopic}: Khẳng định nào sau đây là đúng về đặc điểm thứ ${i}?`,
-          options: [
-            { id: 'A', text: `Phương án A: Tính chất chuẩn xác của ${aiTopic}` },
-            { id: 'B', text: `Phương án B: Trường hợp đặc biệt không áp dụng` },
-            { id: 'C', text: `Phương án C: Giả thiết ngược lại` },
-            { id: 'D', text: `Phương án D: Cả 3 phương án đều đúng` }
-          ],
-          correctOptionId: 'A',
+          text: qText,
+          options: qOptions,
+          correctOptionId: chosenCorrect,
           explanation: `Giải thích chi tiết: Áp dụng định nghĩa và tính chất cơ bản của ${aiTopic}.`,
           points: Number((multipleChoicePoints / Math.max(1, aiMcCount)).toFixed(2))
         });
       }
 
       // 2. Generate Essay
+      examRawText += `\nII. PHẦN TỰ LUẬN (${essayPoints} điểm)\n`;
       for (let j = 1; j <= aiEssayCount; j++) {
         const order = aiMcCount + j;
+        const essayQText = `Vận dụng kiến thức bài học ${aiTopic}. Hãy viết lời giải chi tiết và tính toán kết quả cuối cùng của bài toán thực tế sau.`;
+        const essayAns = `1. Phân tích bài toán, vẽ hình minh họa và tóm tắt đại lượng đã cho.\n2. Vận dụng trực tiếp định lý ${aiTopic} để thiết lập phương trình liên hệ.\n3. Biến đổi trung gian chính xác và đưa ra kết luận đáp số.`;
+        essayAnswers[order] = essayAns;
+
+        examRawText += `\nCâu ${order}: ${essayQText}\n`;
+
         aiQuestions.push({
           id: `q_ai_es_${j}_${Date.now()}`,
           order,
           type: 'essay',
-          text: `[Tự luận ${j}] Cho bài toán thực tế vận dụng ${aiTopic}. Hãy viết lời giải chi tiết và tính toán kết quả cuối cùng.`,
+          text: essayQText,
           options: [],
-          modelAnswer: `1. Phân tích đề bài và vẽ hình/tóm tắt.\n2. Áp dụng hệ thức ${aiTopic}.\n3. Tính ra đáp số chính xác và kết luận.`,
+          modelAnswer: essayAns,
           rubric: `- Thiết lập phương trình đúng: 0.5 điểm\n- Các bước biến đổi trung gian: 0.5 điểm\n- Đáp số đúng kèm đơn vị: 0.5 điểm`,
           points: Number((essayPoints / Math.max(1, aiEssayCount)).toFixed(2))
         });
       }
 
+      // Format answers strictly after HẾT
+      const answerSection = formatAnswersBlock(mcAnswers, essayAnswers);
+      const fullExamWithAnswers = `${examRawText.trim()}\n\n${answerSection}`;
+      setRawText(fullExamWithAnswers);
+
       setQuestions(aiQuestions);
-      setTitle(`Đề kiểm tra AI: ${aiTopic} (Trắc nghiệm & Tự luận)`);
+      setTitle(`Đề kiểm tra AI: ${aiTopic} (${subject} ${grade})`);
       setIsGeneratingAI(false);
-      setDistributionMsg(`Đã tạo đề AI: ${aiMcCount} câu trắc nghiệm + ${aiEssayCount} câu tự luận!`);
-      setTimeout(() => setDistributionMsg(null), 3500);
+      setDistributionMsg(`Đã tạo đề AI: ${aiMcCount} câu trắc nghiệm (1.D) + ${aiEssayCount} câu tự luận (câu [N]. câu trả lời) sau chữ HẾT!`);
+      setTimeout(() => setDistributionMsg(null), 4000);
     }, 600);
   };
 
@@ -756,29 +835,91 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
           </div>
         </div>
 
-        {/* Proctoring Settings Checklist */}
-        <div className="border-t border-slate-100 pt-4">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-            Cấu hình bảo mật & hiển thị kết quả
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-blue-50/30 cursor-pointer transition-colors">
-              <input
-                type="checkbox"
-                checked={settings.antiCheatProctoring}
-                onChange={(e) => setSettings({ ...settings, antiCheatProctoring: e.target.checked })}
-                className="mt-0.5 w-4 h-4 text-blue-600 rounded"
-              />
-              <div>
-                <span className="text-xs font-bold text-slate-800 block">
-                  Giám sát chống gian lận
-                </span>
-                <span className="text-[11px] text-slate-500 block">
-                  Cảnh báo và đếm số lần học sinh chuyển tab hoặc rời màn hình
+        {/* Proctoring Settings Checklist - PROMINENT ON/OFF TOGGLE */}
+        <div className="border-t border-slate-100 pt-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-800">
+                  Tính năng Giám Sát Chống Gian Lận (Proctoring)
+                </h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                  settings.antiCheatProctoring 
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                    : 'bg-slate-100 text-slate-600 border border-slate-300'
+                }`}>
+                  {settings.antiCheatProctoring ? 'Đang BẬT' : 'Đang TẮT'}
                 </span>
               </div>
-            </label>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Bật hoặc tắt tính năng theo dõi chuyển tab, mất tiêu điểm trình duyệt khi học sinh làm bài
+              </p>
+            </div>
 
+            {/* Big Interactive Toggle Switch */}
+            <button
+              type="button"
+              onClick={() => setSettings({ ...settings, antiCheatProctoring: !settings.antiCheatProctoring })}
+              className={`inline-flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all shadow-xs cursor-pointer ${
+                settings.antiCheatProctoring
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20 ring-2 ring-emerald-500/30'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+              }`}
+            >
+              {settings.antiCheatProctoring ? (
+                <>
+                  <ShieldCheck className="w-4 h-4 text-emerald-200" />
+                  <span>BẬT GIÁM SÁT THI</span>
+                  <ToggleRight className="w-5 h-5 text-emerald-200" />
+                </>
+              ) : (
+                <>
+                  <ShieldX className="w-4 h-4 text-slate-400" />
+                  <span>TẮT GIÁM SÁT THI</span>
+                  <ToggleLeft className="w-5 h-5 text-slate-400" />
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Context box depending on Proctoring state */}
+          {settings.antiCheatProctoring ? (
+            <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-900 text-xs space-y-2">
+              <div className="flex items-center gap-2 font-bold">
+                <ShieldAlert className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span>Chế độ kiểm tra chính thức (Có giám sát):</span>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Hệ thống sẽ tự động phát hiện và ghi lại thời gian học sinh chuyển sang tab khác, mở ứng dụng khác hoặc rời khỏi trang thi.
+              </p>
+              <div className="flex items-center gap-3 pt-1">
+                <span className="text-[11px] font-bold text-emerald-900">
+                  Số lần cảnh báo tối đa trước khi tự động nộp bài:
+                </span>
+                <select
+                  value={settings.maxTabSwitchWarnings || 3}
+                  onChange={(e) => setSettings({ ...settings, maxTabSwitchWarnings: Number(e.target.value) })}
+                  className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-xs font-bold text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value={1}>1 lần (Nghiêm ngặt nhất)</option>
+                  <option value={2}>2 lần</option>
+                  <option value={3}>3 lần (Khuyên dùng)</option>
+                  <option value={5}>5 lần</option>
+                  <option value={10}>10 lần (Nhắc nhở nhẹ)</option>
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs flex items-center gap-2.5">
+              <ShieldX className="w-4 h-4 text-slate-400 shrink-0" />
+              <span className="text-[11px] leading-relaxed">
+                <strong>Chế độ tự do (Không giám sát):</strong> Học sinh có thể thoải mái chuyển tab, tra cứu tài liệu hoặc làm bài tập về nhà mà không bị cảnh báo vi phạm hay khóa bài.
+              </span>
+            </div>
+          )}
+
+          {/* Other exam options */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
             <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-blue-50/30 cursor-pointer transition-colors">
               <input
                 type="checkbox"
@@ -812,6 +953,107 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
                 </span>
               </div>
             </label>
+
+            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-blue-50/30 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={settings.showResultImmediately}
+                onChange={(e) => setSettings({ ...settings, showResultImmediately: e.target.checked })}
+                className="mt-0.5 w-4 h-4 text-blue-600 rounded"
+              />
+              <div>
+                <span className="text-xs font-bold text-slate-800 block">
+                  Hiện điểm trắc nghiệm ngay
+                </span>
+                <span className="text-[11px] text-slate-500 block">
+                  Học sinh thấy điểm trắc nghiệm ngay khi nộp bài
+                </span>
+              </div>
+            </label>
+          </div>
+
+          {/* GIỚI HẠN ĐIỂM ĐẠT ĐƯỢC MỚI XEM KẾT QUẢ / ĐÁP ÁN */}
+          <div className={`mt-3 p-4 rounded-2xl border transition-all ${
+            settings.requireMinScoreForReview
+              ? 'bg-amber-50/80 border-amber-300 shadow-xs'
+              : 'bg-slate-50/60 border-slate-200'
+          }`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  settings.requireMinScoreForReview ? 'bg-amber-500 text-white shadow-xs' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800">
+                      Giới hạn điểm làm được mới xem được kết quả & đáp án
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      settings.requireMinScoreForReview
+                        ? 'bg-amber-200 text-amber-900 border border-amber-300'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {settings.requireMinScoreForReview ? 'Đang BẬT' : 'Đang TẮT'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Thí sinh phải đạt từ số điểm tối thiểu này trở lên mới được mở khóa xem đáp án và giải thích chi tiết. Nếu chưa đạt, hệ thống sẽ nhắc học sinh ôn tập thêm.
+                  </p>
+                </div>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={!!settings.requireMinScoreForReview}
+                  onChange={(e) => setSettings({ 
+                    ...settings, 
+                    requireMinScoreForReview: e.target.checked,
+                    minScoreToShowResult: settings.minScoreToShowResult ?? 5.0
+                  })}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+              </label>
+            </div>
+
+            {settings.requireMinScoreForReview && (
+              <div className="mt-3 pt-3 border-t border-amber-200/80 flex flex-wrap items-center gap-3">
+                <label className="text-xs font-bold text-amber-900">
+                  Điểm tối thiểu cần đạt để mở khóa kết quả / đáp án:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step={0.5}
+                    min={0}
+                    max={totalPoints || 10}
+                    value={settings.minScoreToShowResult ?? 5.0}
+                    onChange={(e) => setSettings({ ...settings, minScoreToShowResult: Number(e.target.value) })}
+                    className="w-24 px-3 py-1.5 rounded-xl border border-amber-300 bg-white text-xs font-black text-amber-900 text-center focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                  <span className="text-xs font-bold text-amber-800">/ {totalPoints} điểm</span>
+                </div>
+                <div className="flex items-center gap-1.5 ml-auto">
+                  {[5.0, 6.0, 7.0, 8.0].map((presetScore) => (
+                    <button
+                      key={presetScore}
+                      type="button"
+                      onClick={() => setSettings({ ...settings, minScoreToShowResult: presetScore })}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                        settings.minScoreToShowResult === presetScore
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-white text-amber-900 border-amber-200 hover:bg-amber-100'
+                      }`}
+                    >
+                      {presetScore}đ
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -1190,6 +1432,15 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
               />
             </div>
 
+            {/* Guide badge explaining answer format after HẾT */}
+            <div className="flex items-start sm:items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-900 shadow-2xs">
+              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5 sm:mt-0" />
+              <div className="leading-relaxed">
+                <span className="font-bold text-indigo-950">Quy chuẩn đáp án sau chữ HẾT: </span>
+                Đáp án nằm ở phần cuối cùng sau chữ <strong>HẾT</strong> của đề. Trắc nghiệm dạng <span className="font-mono font-bold bg-white/80 px-1 py-0.5 rounded text-indigo-700">1.D</span> (câu 1 đáp án D), tự luận dạng <span className="font-mono font-bold bg-white/80 px-1 py-0.5 rounded text-purple-700">câu 37. câu trả lời</span>.
+              </div>
+            </div>
+
             {parseErrors.length > 0 && (
               <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
                 <div className="font-bold flex items-center gap-1.5">
@@ -1204,14 +1455,36 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleParseText}
-              className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
-            >
-              <FileCheck className="w-4 h-4" />
-              <span>Bóc tách câu hỏi, bảng đáp án, lời giải & phân bổ điểm ngay</span>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                disabled={isAutoSolving}
+                onClick={handleAutoSupplementAnswers}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold text-sm shadow-md shadow-purple-500/20 transition-all flex items-center justify-center gap-2 group"
+                title="AI phân tích toàn bộ đề thi và tự động bổ sung đáp án sau chữ HẾT (1.D cho trắc nghiệm, câu [N]. cho tự luận)"
+              >
+                {isAutoSolving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-amber-300" />
+                    <span>Đang tự bổ sung đáp án sau HẾT...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300 group-hover:scale-110 transition-transform" />
+                    <span>AI Tự bổ sung đáp án (sau chữ HẾT)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleParseText}
+                className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
+              >
+                <FileCheck className="w-4 h-4" />
+                <span>Bóc tách câu hỏi & cập nhật đề thi</span>
+              </button>
+            </div>
           </div>
         )}
 

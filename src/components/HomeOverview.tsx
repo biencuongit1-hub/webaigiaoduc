@@ -18,7 +18,8 @@ import {
   Users, 
   Globe2,
   BrainCircuit,
-  ExternalLink
+  ExternalLink,
+  Lock
 } from 'lucide-react';
 import { Exam } from '../types';
 
@@ -90,7 +91,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
           </h1>
 
           <p className="text-slate-300 text-base sm:text-lg leading-relaxed max-w-3xl">
-            Hệ sinh thái <strong className="text-white">Giáo viên thời đại AI</strong> (Không gian bài giảng 360°, Game lớp học tương tác, Trợ lý AI 4.0), tích hợp <strong className="text-amber-300">Tính năng tạo đề kiểm tra & phòng thi học sinh chống gian lận thông minh</strong>, sẵn sàng đóng gói và deploy lên <strong className="text-orange-400">Firebase Hosting</strong>.
+            Hệ sinh thái <strong className="text-white">Giáo viên thời đại AI</strong> (Hệ thống khảo thí thông minh, Game lớp học tương tác, Trợ lý AI 4.0), tích hợp <strong className="text-amber-300">Tính năng tạo đề kiểm tra & phòng thi học sinh chống gian lận thông minh</strong>, sẵn sàng đóng gói và deploy lên <strong className="text-orange-400">Firebase Hosting</strong>.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -134,8 +135,8 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
               <div className="text-xs text-slate-400">Giám sát chống gian lận rời tab</div>
             </div>
             <div>
-              <div className="text-2xl font-black text-emerald-300">360° VR</div>
-              <div className="text-xs text-slate-400">Không gian bảo tàng bài giảng số</div>
+              <div className="text-2xl font-black text-emerald-300">Khối 6-12</div>
+              <div className="text-xs text-slate-400">Phân loại đề thi theo khối học</div>
             </div>
             <div>
               <div className="text-2xl font-black text-purple-300">Firebase</div>
@@ -168,43 +169,43 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
 
         {/* 4 Pillars Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 hover:border-indigo-300 hover:shadow-md transition-all">
-            <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold mb-3">
-              <Compass className="w-5 h-5" />
+          <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 hover:border-blue-300 hover:shadow-md transition-all">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold mb-3">
+              <FileCheck2 className="w-5 h-5" />
             </div>
-            <h3 className="font-bold text-slate-900 text-base mb-1.5">1. Không Gian 360° / Bảo Tàng 3D</h3>
+            <h3 className="font-bold text-slate-900 text-base mb-1.5">1. Khảo Thí & Phân Bổ Điểm</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Cho phép giáo viên tạo tour tham quan 360 độ ảo (di tích lịch sử, địa lý, vũ trụ, phòng thí nghiệm). Tích hợp điểm tương tác (hotspots) chèn hình ảnh, video, âm thanh giải thích trực tiếp.
-            </p>
-          </div>
-
-          <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 hover:border-purple-300 hover:shadow-md transition-all">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold mb-3">
-              <Gamepad2 className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-base mb-1.5">2. Trò Chơi Tương Tác Lớp Học</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Gamification giáo dục độc đáo: <em>Quiz nghiêng đầu</em> (học sinh nghiêng người chọn phương án), <em>Kéo co kiến thức</em> (thi đua giữa các tổ/nhóm), <em>Vòng quay may mắn</em> gọi tên ngẫu nhiên.
+              Tạo đề thi trắc nghiệm và tự luận thông minh từ file Word/PDF, chia tỷ lệ điểm (7/3, 8/2...) và phân loại đề thi theo khối học chuyên biệt.
             </p>
           </div>
 
           <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 hover:border-amber-300 hover:shadow-md transition-all">
             <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold mb-3">
-              <Bot className="w-5 h-5" />
+              <ShieldAlert className="w-5 h-5" />
             </div>
-            <h3 className="font-bold text-slate-900 text-base mb-1.5">3. Trợ Lý AI Giáo Viên 4.0</h3>
+            <h3 className="font-bold text-slate-900 text-base mb-1.5">2. Bật/Tắt Giám Sát Chống Gian Lận</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Tích hợp AI hỗ trợ tự động: Soạn Kế hoạch bài dạy chuẩn CV 5512 của Bộ GD&ĐT, Trợ lý viết ý tưởng Sáng kiến kinh nghiệm (SKKN), và "Chú rồng AI" quản lý âm lượng, trật tự lớp học.
+              Thầy cô chủ động bật hoặc tắt giám sát khi tạo đề: tự động bắt sự kiện rời màn hình, đếm số lần vi phạm và cảnh báo nghiêm túc tới thí sinh.
             </p>
           </div>
 
-          <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 hover:border-blue-300 hover:shadow-md transition-all">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold mb-3">
-              <BookOpen className="w-5 h-5" />
+          <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 hover:border-rose-300 hover:shadow-md transition-all">
+            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold mb-3">
+              <Lock className="w-5 h-5" />
             </div>
-            <h3 className="font-bold text-slate-900 text-base mb-1.5">4. Kho Học Liệu & Đổi Mới</h3>
+            <h3 className="font-bold text-slate-900 text-base mb-1.5">3. Giới Hạn Điểm Xem Kết Quả</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Thư viện giáo án mẫu, ngân hàng câu hỏi phân môn (Toán, Văn, Anh, KHTN, Sử, Địa, Tin học...), hỗ trợ nhập xuất câu hỏi từ Excel/Word để thầy cô dùng ngay khi lên lớp hoặc dạy trực tuyến.
+              Tính năng bảo mật sư phạm: Chỉ khi học sinh đạt số điểm tối thiểu thầy cô quy định mới được xem đáp án chi tiết và lời giải thích.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 hover:border-emerald-300 hover:shadow-md transition-all">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold mb-3">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <h3 className="font-bold text-slate-900 text-base mb-1.5">4. Sổ Điểm & Báo Cáo Tự Động</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Chấm điểm trắc nghiệm tức thì, chấm bài tự luận trực tiếp, thống kê phổ điểm, xếp loại học lực và hỗ trợ xuất file Excel tiện lợi.
             </p>
           </div>
         </div>
@@ -455,58 +456,58 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div 
-            onClick={() => navigateTo('games')}
-            className="group cursor-pointer rounded-2xl p-5 border border-purple-200 bg-purple-50/50 hover:bg-purple-50 hover:border-purple-400 transition-all"
+            onClick={() => navigateTo('create_exam')}
+            className="group cursor-pointer rounded-2xl p-5 border border-blue-200 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-400 transition-all"
           >
-            <div className="w-12 h-12 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold mb-3 shadow-md shadow-purple-600/20 group-hover:scale-105 transition-transform">
-              <Gamepad2 className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold mb-3 shadow-md shadow-blue-600/20 group-hover:scale-105 transition-transform">
+              <Sparkles className="w-6 h-6" />
             </div>
-            <h3 className="font-bold text-slate-900 text-base group-hover:text-purple-700 transition-colors">
-              Chơi Game Lớp Học
+            <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-700 transition-colors">
+              Tạo Đề & Khảo Thí Thông Minh
             </h3>
             <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
-              Trải nghiệm "Quiz Nghiêng Đầu", "Vòng Quay May Mắn" và "Kéo Co Kiến Thức" khuấy động không khí lớp học.
+              Bóc tách đề Word sang trắc nghiệm & tự luận, phân chia điểm số, bật/tắt giám sát và giới hạn điểm xem kết quả.
             </p>
-            <div className="mt-4 flex items-center gap-1 text-xs font-bold text-purple-700">
-              <span>Mở phòng Game</span>
+            <div className="mt-4 flex items-center gap-1 text-xs font-bold text-blue-700">
+              <span>Bắt đầu tạo đề</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
 
           <div 
-            onClick={() => navigateTo('vr360')}
-            className="group cursor-pointer rounded-2xl p-5 border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-50 hover:border-indigo-400 transition-all"
+            onClick={() => setShowCodeInputModal(true)}
+            className="group cursor-pointer rounded-2xl p-5 border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:border-emerald-400 transition-all"
           >
-            <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold mb-3 shadow-md shadow-indigo-600/20 group-hover:scale-105 transition-transform">
-              <Compass className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold mb-3 shadow-md shadow-emerald-600/20 group-hover:scale-105 transition-transform">
+              <GraduationCap className="w-6 h-6" />
             </div>
-            <h3 className="font-bold text-slate-900 text-base group-hover:text-indigo-700 transition-colors">
-              Không Gian Bài Giảng 360°
+            <h3 className="font-bold text-slate-900 text-base group-hover:text-emerald-700 transition-colors">
+              Vào Phòng Thi Học Sinh
             </h3>
             <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
-              Tour bảo tàng 3D ảo và không gian tương tác hình ảnh, điểm hotspot phục vụ môn Lịch sử, Địa lý và KHTN.
+              Nhập mã đề phòng thi nhanh, trải nghiệm giao diện phiếu làm bài chuẩn thi cử kèm giám sát chuyển tab.
             </p>
-            <div className="mt-4 flex items-center gap-1 text-xs font-bold text-indigo-700">
-              <span>Vào tham quan 360°</span>
+            <div className="mt-4 flex items-center gap-1 text-xs font-bold text-emerald-700">
+              <span>Nhập mã vào thi</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
 
           <div 
-            onClick={() => navigateTo('ai_assistant')}
+            onClick={() => navigateTo('manage_exams')}
             className="group cursor-pointer rounded-2xl p-5 border border-amber-200 bg-amber-50/50 hover:bg-amber-50 hover:border-amber-400 transition-all"
           >
             <div className="w-12 h-12 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold mb-3 shadow-md shadow-amber-600/20 group-hover:scale-105 transition-transform">
-              <Bot className="w-6 h-6" />
+              <FileCheck2 className="w-6 h-6" />
             </div>
             <h3 className="font-bold text-slate-900 text-base group-hover:text-amber-700 transition-colors">
-              Trợ Lý AI Giáo Viên 4.0
+              Quản Lý & Sổ Điểm Điện Tử
             </h3>
             <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
-              Soạn giáo án CV 5512, gợi ý đề tài Sáng kiến kinh nghiệm (SKKN), và kích hoạt chú rồng AI giữ trật tự.
+              Theo dõi danh sách bài nộp, chấm bài tự luận trực tiếp, phân tích phổ điểm lớp học và xuất báo cáo.
             </p>
             <div className="mt-4 flex items-center gap-1 text-xs font-bold text-amber-700">
-              <span>Mở trợ lý AI</span>
+              <span>Mở sổ điểm & đề thi</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>

@@ -6,7 +6,6 @@ import { StudentExamRoom } from './components/StudentExamRoom';
 import { StudentPortal } from './components/StudentPortal';
 import { ExamManagement } from './components/ExamManagement';
 import { InteractiveGames } from './components/InteractiveGames';
-import { Virtual360Space } from './components/Virtual360Space';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { FirebaseDeployGuide } from './components/FirebaseDeployGuide';
 import { UserAccountModal } from './components/UserAccountModal';
@@ -161,7 +160,7 @@ export default function App() {
     });
   }, [submissions, currentUser, userRole, exams]);
 
-  const STUDENT_ALLOWED_TABS = ['student_portal', 'student_study', 'student_history', 'student_room', 'games', 'vr360'];
+  const STUDENT_ALLOWED_TABS = ['student_portal', 'student_history', 'student_room'];
 
   // Enforce student RBAC: if currentUser is student, restrict strictly to learning menus
   useEffect(() => {
@@ -347,17 +346,6 @@ export default function App() {
 
                 <button
                   type="button"
-                  onClick={() => setCurrentTab('student_study')}
-                  className={`px-3 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer ${
-                    currentTab === 'student_study' ? 'bg-blue-600 text-white' : 'bg-white text-blue-800 border border-blue-200 hover:bg-blue-50'
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>Góc ôn luyện</span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => setCurrentTab('student_history')}
                   className={`px-3 py-1.5 rounded-xl font-bold shadow-xs flex items-center gap-1.5 transition-all text-xs cursor-pointer ${
                     currentTab === 'student_history' ? 'bg-amber-600 text-white' : 'bg-white text-amber-800 border border-amber-200 hover:bg-amber-50'
@@ -414,8 +402,8 @@ export default function App() {
           {/* CONDITIONAL PORTALS: STRICT STUDENT LEARNING MENUS      */}
           {/* ======================================================= */}
 
-          {/* VIEW: STUDENT PORTAL (LÀM BÀI, ÔN TẬP, LỊCH SỬ) - ALWAYS FOR STUDENTS */}
-          {(currentUser.role === 'student' || userRole === 'student' || currentTab === 'student_portal' || currentTab === 'student_study' || currentTab === 'student_history') && currentTab !== 'student_room' && (
+          {/* VIEW: STUDENT PORTAL (LÀM BÀI, LỊCH SỬ) - ALWAYS FOR STUDENTS */}
+          {(currentUser.role === 'student' || userRole === 'student' || currentTab === 'student_portal' || currentTab === 'student_history') && currentTab !== 'student_room' && (
             <StudentPortal
               currentUser={currentUser}
               exams={exams}
@@ -489,9 +477,6 @@ export default function App() {
 
           {/* VIEW: CLASSROOM GAMES (GAMIFICATION) */}
           {currentTab === 'games' && <InteractiveGames />}
-
-          {/* VIEW: 360 DEGREE VIRTUAL CLASSROOM */}
-          {currentTab === 'vr360' && <Virtual360Space />}
 
           {/* VIEW: TEACHER AI ASSISTANT - ONLY FOR TEACHER */}
           {currentUser.role === 'teacher' && currentTab === 'ai_assistant' && <AIAssistantModal />}

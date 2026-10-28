@@ -45,6 +45,8 @@ export interface ExamSettings {
   shuffleOptions: boolean;
   showResultImmediately: boolean;
   showAnswers: boolean;
+  requireMinScoreForReview?: boolean; // Giới hạn điểm làm được mới xem được kết quả/đáp án
+  minScoreToShowResult?: number; // Điểm tối thiểu cần đạt để xem đáp án/kết quả (VD: 5.0)
   requireFullName: boolean;
   requireClass: boolean;
   requireStudentId: boolean;

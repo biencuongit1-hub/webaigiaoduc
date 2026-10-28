@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../types';
 import { StorageService } from '../services/storage';
+import { checkCredentialExistsInFirestore } from '../services/firebase';
 
 export interface UserAccountModalProps {
   isOpen: boolean;
@@ -155,6 +156,17 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
       return;
     }
 
+    // Check duplicate in Firestore database
+    try {
+      const cloudCheck = await checkCredentialExistsInFirestore(username, email);
+      if (cloudCheck.exists) {
+        setErrorMsg(cloudCheck.reason || 'Tài khoản hoặc email này đã tồn tại trong Database.');
+        return;
+      }
+    } catch {
+      // Continue
+    }
+
     const newProfile: UserProfile = {
       id: `user_${role}_${Date.now()}`,
       role,
@@ -187,7 +199,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
   };
 
   // 2. Handle Login
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -196,7 +208,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
       return;
     }
 
-    const user = StorageService.login(loginIdentifier, loginPassword);
+    const user = await StorageService.login(loginIdentifier, loginPassword);
     if (user) {
       onUserChange(user);
       setSuccessMsg(`Đăng nhập thành công! Chào mừng ${user.fullName}.`);
@@ -210,7 +222,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
   };
 
   // 3. Handle Find User for Password Recovery
-  const handleFindUserForRecovery = (e: React.FormEvent) => {
+  const handleFindUserForRecovery = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setOtpSentMsg('');
@@ -220,7 +232,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
       return;
     }
 
-    const matched = StorageService.findUserForPasswordReset(recoveryContact);
+    const matched = await StorageService.findUserForPasswordReset(recoveryContact);
     if (!matched) {
       setErrorMsg(`Không tìm thấy tài khoản nào khớp với "${recoveryContact}".`);
       return;
@@ -987,7 +999,7 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
           {/* TAB: LOGIN (ĐĂNG NHẬP)                                   */}
           {/* ======================================================== */}
           {activeTab === 'login' && (
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} autoComplete="off" className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Tài khoản, Email hoặc Số điện thoại *
@@ -996,9 +1008,10 @@ export const UserAccountModal: React.FC<UserAccountModalProps> = ({
                   <input
                     type="text"
                     required
+                    autoComplete="off"
                     value={loginIdentifier}
                     onChange={(e) => setLoginIdentifier(e.target.value)}
-                    placeholder="VD: vanan2010, vanan.2010@gmail.com hoặc 0912345678"
+                    placeholder="Nhập tên tài khoản, email hoặc số điện thoại..."
                     className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 font-medium"
                   />
                   <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
