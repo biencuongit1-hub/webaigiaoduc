@@ -15,6 +15,8 @@ export interface UserProfile {
   email?: string;
   phoneNumber?: string;
   studentId?: string; // Mã học sinh / Số báo danh
+  labPeriod?: string; // Tiết học phòng máy: 'Tiết 1', 'Tiết 2', 'Tiết 3', 'Tiết 4', 'Tiết 5'
+  computerNumber?: string; // Số thứ tự máy phòng máy: 'Máy 01', 'Máy 12'...
   subject?: string; // Môn giảng dạy chính (đối với Giáo viên)
   avatarUrl?: string;
   createdAt: string;
@@ -89,6 +91,7 @@ export interface EssayScoreDetail {
   score: number;
   maxScore: number;
   teacherNote?: string;
+  feedback?: string;
 }
 
 export interface ExamSubmission {
@@ -97,6 +100,8 @@ export interface ExamSubmission {
   studentName: string;
   studentClass: string;
   studentId?: string;
+  labPeriod?: string; // Tiết học (VD: Tiết 1, Tiết 2, Tiết 3...)
+  computerNumber?: string; // Số máy tính trong phòng máy (VD: Máy 01, Máy 12...)
   answers: Record<string, string>; // questionId -> optionId (MC) OR written text (Essay)
   essayAttachments?: Record<string, string>; // questionId -> image url / data url
   essayScores?: Record<string, EssayScoreDetail>; // questionId -> score detail

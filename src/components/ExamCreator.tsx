@@ -1432,12 +1432,21 @@ export const ExamCreator: React.FC<ExamCreatorProps> = ({
               />
             </div>
 
-            {/* Guide badge explaining answer format after HẾT */}
-            <div className="flex items-start sm:items-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200/80 rounded-xl text-xs text-indigo-900 shadow-2xs">
-              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5 sm:mt-0" />
-              <div className="leading-relaxed">
-                <span className="font-bold text-indigo-950">Quy chuẩn đáp án sau chữ HẾT: </span>
-                Đáp án nằm ở phần cuối cùng sau chữ <strong>HẾT</strong> của đề. Trắc nghiệm dạng <span className="font-mono font-bold bg-white/80 px-1 py-0.5 rounded text-indigo-700">1.D</span> (câu 1 đáp án D), tự luận dạng <span className="font-mono font-bold bg-white/80 px-1 py-0.5 rounded text-purple-700">câu 37. câu trả lời</span>.
+            {/* Guide badge explaining structure & answer format after HẾT */}
+            <div className="space-y-1.5 p-3 bg-gradient-to-r from-indigo-50/90 via-purple-50/80 to-blue-50/90 border border-indigo-200/80 rounded-xl text-xs text-indigo-900 shadow-2xs">
+              <div className="flex items-center gap-2 font-bold text-indigo-950">
+                <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Quy chuẩn cấu trúc đề & đáp án:</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] leading-relaxed pt-1">
+                <div className="bg-white/80 p-2 rounded-lg border border-indigo-100">
+                  <div className="font-semibold text-purple-900 mb-0.5">📝 Phân chia phần thi:</div>
+                  Đề nếu có tự luận sẽ có chữ <span className="font-mono font-bold text-purple-700 bg-purple-100 px-1 py-0.5 rounded">II. Tự luận</span> (hoặc <span className="font-mono font-bold text-purple-700">II.Tự luận</span>), trắc nghiệm là <span className="font-mono font-bold text-indigo-700 bg-indigo-100 px-1 py-0.5 rounded">I. Trắc nghiệm</span>.
+                </div>
+                <div className="bg-white/80 p-2 rounded-lg border border-indigo-100">
+                  <div className="font-semibold text-indigo-900 mb-0.5">🎯 Đáp án sau chữ HẾT:</div>
+                  Trắc nghiệm dạng <span className="font-mono font-bold bg-indigo-100 px-1 py-0.5 rounded text-indigo-700">1.D</span> (câu 1 đáp án D); tự luận dạng <span className="font-mono font-bold bg-purple-100 px-1 py-0.5 rounded text-purple-700">câu 37. câu trả lời</span>.
+                </div>
               </div>
             </div>
 

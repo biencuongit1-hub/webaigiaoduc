@@ -22,10 +22,15 @@ import {
   Image as ImageIcon,
   ZoomIn,
   Lock,
-  X
+  X,
+  Sparkles,
+  UserCheck,
+  RefreshCw
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Exam, Question, ExamSubmission, ViolationLog, UserProfile } from '../types';
+import { Exam, Question, ExamSubmission, ViolationLog, UserProfile, EssayScoreDetail } from '../types';
+import { autoGradeSubmissionEssays } from '../utils/essayGrader';
+import { StorageService } from '../services/storage';
 
 interface StudentExamRoomProps {
   exam: Exam;
@@ -47,8 +52,18 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
   const [studentName, setStudentName] = useState(currentUser?.fullName || '');
   const [studentClass, setStudentClass] = useState(currentUser?.className || exam.targetClass || '');
   const [studentId, setStudentId] = useState(currentUser?.studentId || '');
+  const [labPeriod, setLabPeriod] = useState(currentUser?.labPeriod || 'Tiết 1');
+  const [computerNumber, setComputerNumber] = useState(currentUser?.computerNumber || '');
   const [inputPassword, setInputPassword] = useState('');
   const [authError, setAuthError] = useState('');
+
+  const handleClearCachedStudent = () => {
+    StorageService.logout();
+    setStudentName('');
+    setStudentId('');
+    setComputerNumber('');
+    setAuthError('🧹 Đã xóa phiên đăng nhập cũ trên máy tính này. Học sinh mới có thể nhập thông tin và làm bài!');
+  };
 
   // Exam runtime state
   const [activeQuestions, setActiveQuestions] = useState<Question[]>(exam.questions);
@@ -183,8 +198,10 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
     };
   }, [step, violationsCount, exam.settings.antiCheatProctoring]);
 
-  // Submit exam calculation
-  const handleSubmitExam = (force = false) => {
+  const [isAutoGrading, setIsAutoGrading] = useState(false);
+
+  // Submit exam calculation with Automatic AI Essay Evaluation
+  const handleSubmitExam = async (force = false) => {
     setShowSubmitModal(false);
 
     let mcCorrectCount = 0;
@@ -203,10 +220,32 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
 
     const totalQ = questionsToScore.length;
     const timeSpent = Math.floor((Date.now() - startTime) / 1000);
-
-    // If no specific points set on individual questions, fallback to ratio
-    const mcTargetPoints = exam.multipleChoicePoints ?? (hasEssay ? 7.0 : exam.totalPoints);
     const mcCalculatedScore = Number(computedMcScore.toFixed(2));
+
+    let essayScoresMap: Record<string, EssayScoreDetail> = {};
+    let autoEssayTotal = 0;
+    let aiTeacherFeedback = '';
+
+    // Automatically grade essay questions by comparing with model answers
+    if (hasEssay) {
+      setIsAutoGrading(true);
+      try {
+        const autoResult = await autoGradeSubmissionEssays(
+          exam,
+          answers,
+          studentName.trim() || 'Học sinh'
+        );
+        essayScoresMap = autoResult.essayScores;
+        autoEssayTotal = autoResult.totalEssayScore;
+        aiTeacherFeedback = autoResult.overallFeedback;
+      } catch (err) {
+        console.warn('[AutoGrade] Lỗi chấm tự động:', err);
+      } finally {
+        setIsAutoGrading(false);
+      }
+    }
+
+    const finalTotalScore = Number((mcCalculatedScore + autoEssayTotal).toFixed(2));
 
     const submission: ExamSubmission = {
       id: `sub_${Date.now()}`,
@@ -214,10 +253,12 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
       studentName: studentName.trim() || 'Học sinh ẩn danh',
       studentClass: studentClass.trim() || 'Tự do',
       studentId: studentId.trim() || undefined,
+      labPeriod: labPeriod.trim() || currentUser?.labPeriod,
+      computerNumber: computerNumber.trim() || currentUser?.computerNumber,
       answers,
       multipleChoiceScore: mcCalculatedScore,
-      essayScore: 0,
-      score: mcCalculatedScore, // Partial score until essay graded
+      essayScore: autoEssayTotal,
+      score: finalTotalScore,
       totalQuestions: totalQ,
       correctCount: mcCorrectCount,
       timeSpentSeconds: timeSpent,
@@ -225,7 +266,9 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
       violationsCount,
       violationLogs,
       status: 'completed',
-      gradingStatus: hasEssay ? 'pending_review' : 'graded'
+      gradingStatus: 'graded',
+      essayScores: essayScoresMap,
+      teacherFeedback: aiTeacherFeedback
     };
 
     setSubmissionResult(submission);
@@ -233,7 +276,7 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
     setStep('result');
 
     // Confetti if great performance
-    if (mcCalculatedScore >= 7 || (!hasEssay && mcCalculatedScore >= 8)) {
+    if (finalTotalScore >= 7) {
       confetti({
         particleCount: 80,
         spread: 70,
@@ -302,8 +345,59 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
             </div>
           </div>
 
+          {/* Computer Lab Handover Banner */}
+          <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs flex items-center justify-between gap-2">
+            <div>
+              <span className="font-bold text-amber-900 block">💻 Phòng máy theo tiết</span>
+              <span className="text-[11px] text-amber-700">Đang lưu máy của: {studentName || 'Chưa có thông tin'}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearCachedStudent}
+              className="px-2.5 py-1 rounded-xl bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0"
+            >
+              🧹 Đổi học sinh / Xóa tài khoản cũ
+            </button>
+          </div>
+
           {/* Identification Form */}
           <div className="space-y-3">
+            {/* Lab Period & Machine */}
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-blue-50/60 border border-blue-200">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tiết học *
+                </label>
+                <select
+                  value={labPeriod}
+                  onChange={(e) => setLabPeriod(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="Tiết 1">Tiết 1</option>
+                  <option value="Tiết 2">Tiết 2</option>
+                  <option value="Tiết 3">Tiết 3</option>
+                  <option value="Tiết 4">Tiết 4</option>
+                  <option value="Tiết 5">Tiết 5</option>
+                  <option value="Tiết 6">Tiết 6</option>
+                  <option value="Tiết 7">Tiết 7</option>
+                  <option value="Tiết 8">Tiết 8</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Số máy
+                </label>
+                <input
+                  type="text"
+                  value={computerNumber}
+                  onChange={(e) => setComputerNumber(e.target.value)}
+                  placeholder="VD: Máy 08"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Họ và tên thí sinh *
@@ -931,6 +1025,19 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
+                onClick={() => {
+                  StorageService.logout();
+                  onExitRoom();
+                }}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs hover:from-emerald-700 hover:to-teal-700 shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Xóa tài khoản hiện tại trên máy và trở về trang chủ sẵn sàng cho học sinh tiết sau"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>💻 Bàn giao máy cho học sinh / Tiết tiếp theo</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={onExitRoom}
                 className="px-6 py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs hover:bg-slate-700 transition-colors flex items-center gap-1.5"
               >
@@ -1001,6 +1108,8 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                   const isEssay = q.type === 'essay';
 
                   if (isEssay) {
+                    const essayDetail = submissionResult.essayScores ? submissionResult.essayScores[q.id] : undefined;
+
                     return (
                       <div
                         key={`res_es_${q.id}_${idx}`}
@@ -1016,9 +1125,17 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                             </span>
                           </div>
 
-                          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 shrink-0">
-                            Tự luận ({q.points || 1.5} điểm)
-                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {essayDetail ? (
+                              <span className="text-xs font-black px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                Đạt {essayDetail.score} / {q.points || 1.5} điểm
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-purple-100 text-purple-800">
+                                Tự luận ({q.points || 1.5} điểm)
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {/* Question Image if present */}
@@ -1042,6 +1159,19 @@ export const StudentExamRoom: React.FC<StudentExamRoomProps> = ({
                             {studentAns || <em className="text-slate-400">Bạn chưa nhập bài làm cho câu hỏi này.</em>}
                           </div>
                         </div>
+
+                        {/* AI Evaluation / Teacher feedback */}
+                        {essayDetail && (essayDetail.feedback || essayDetail.teacherNote) && (
+                          <div className="p-3.5 rounded-xl bg-purple-50 border border-purple-200 space-y-1">
+                            <div className="text-[11px] font-bold text-purple-900 uppercase flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                              <span>🤖 Nhận xét chấm tự động từ AI:</span>
+                            </div>
+                            <div className="text-xs text-purple-950 font-medium leading-relaxed">
+                              {essayDetail.feedback || essayDetail.teacherNote}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Teacher model answer & rubric */}
                         {q.modelAnswer && (

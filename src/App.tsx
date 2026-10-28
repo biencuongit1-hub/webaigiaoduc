@@ -63,8 +63,9 @@ export default function App() {
     let unsubUsers: (() => void) | undefined;
     try {
       unsubExams = subscribeToExams((cloudExams) => {
-        if (cloudExams && cloudExams.length > 0) {
-          setExams(cloudExams);
+        if (cloudExams) {
+          const deleted = StorageService.getDeletedExamIds();
+          setExams(cloudExams.filter(e => !deleted.has(e.id)));
         }
       });
       unsubSubs = subscribeToSubmissions(undefined, (cloudSubs) => {

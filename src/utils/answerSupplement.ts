@@ -88,9 +88,32 @@ export function supplementAnswersLocally(rawText: string): { updatedText: string
     cleanBody = cleanBody.slice(0, lastHetMatch.index).trim();
   }
 
-  // Also remove trailing "BẢNG ĐÁP ÁN" or "ĐÁP ÁN" if it was not preceded by HẾT
-  const trailingKeyRegex = /(?:\n|^)\s*(?:BẢNG\s*ĐÁP\s*ÁN|PHIẾU\s*ĐÁP\s*ÁN|ĐÁP\s*ÁN|HƯỚNG\s*DẪN\s*GIẢI\s*CHI\s*TIẾT)[\s:_\-]*\n?[\s\S]*$/i;
-  cleanBody = cleanBody.replace(trailingKeyRegex, '').trim();
+  // Ensure structured section headers if exam contains essay questions: "II. Tự luận"
+  const hasEssayHeader = /(?:^|\n)\s*(?:(?:(?:PHẦN\s*)?(?:II|2|B)\b|II)[\.:\s\-–—/]*\s*(?:PHẦN\s*)?TỰ\s*LUẬN|PHẦN\s*TỰ\s*LUẬN|TỰ\s*LUẬN\s*[\.:\s\-–—])/i.test(cleanBody);
+  const essayKeysList = Object.keys(essayAnswers).map(Number).sort((a, b) => a - b);
+  const mcKeysList = Object.keys(mcAnswers).map(Number).sort((a, b) => a - b);
+
+  if (essayKeysList.length > 0 && !hasEssayHeader) {
+    const firstEssayNum = essayKeysList[0];
+    const firstEssayRegex = new RegExp(`(?:^|\\n)\\s*(?:(?:Câu|Question|Bài)\\s*${firstEssayNum}|${firstEssayNum})[\\.:\\s\\-–—]+`, 'i');
+    const firstEssayIndex = cleanBody.search(firstEssayRegex);
+    if (firstEssayIndex !== -1) {
+      cleanBody = `${cleanBody.slice(0, firstEssayIndex).trim()}\n\nII. Tự luận\n\n${cleanBody.slice(firstEssayIndex).trim()}`;
+    } else {
+      cleanBody = `${cleanBody}\n\nII. Tự luận`;
+    }
+  }
+
+  // Ensure "I. Trắc nghiệm" if exam has both multiple choice and essay
+  const hasMcHeader = /(?:^|\n)\s*(?:(?:(?:PHẦN\s*)?(?:I|1|A)\b|I)[\.:\s\-–—/]*\s*(?:PHẦN\s*)?TRẮC\s*NGHIỆM|PHẦN\s*TRẮC\s*NGHIỆM|TRẮC\s*NGHIỆM\s*[\.:\s\-–—])/i.test(cleanBody);
+  if (mcKeysList.length > 0 && essayKeysList.length > 0 && !hasMcHeader) {
+    const firstMcNum = mcKeysList[0];
+    const firstMcRegex = new RegExp(`(?:^|\\n)\\s*(?:(?:Câu|Question|Bài)\\s*${firstMcNum}|${firstMcNum})[\\.:\\s\\-–—]+`, 'i');
+    const firstMcIndex = cleanBody.search(firstMcRegex);
+    if (firstMcIndex !== -1) {
+      cleanBody = `${cleanBody.slice(0, firstMcIndex).trim()}\n\nI. Trắc nghiệm\n\n${cleanBody.slice(firstMcIndex).trim()}`;
+    }
+  }
 
   const answerSection = formatAnswersBlock(mcAnswers, essayAnswers);
   const updatedText = `${cleanBody}\n\n${answerSection}`;

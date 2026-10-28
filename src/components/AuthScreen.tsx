@@ -32,7 +32,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   onLoginSuccess,
   initialMode = 'login'
 }) => {
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot_password'>(initialMode);
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot_password' | 'lab_quick'>(initialMode);
   const [role, setRole] = useState<UserRole>('student');
 
   // Login form state
@@ -54,6 +54,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [studentId, setStudentId] = useState('');
   const [subject, setSubject] = useState('Toán học');
 
+  // Computer Lab Period State ("Phòng máy theo tiết")
+  const [labPeriod, setLabPeriod] = useState('Tiết 1');
+  const [computerNumber, setComputerNumber] = useState('');
+
   // Forgot password form state
   const [recoveryContact, setRecoveryContact] = useState('');
   const [foundUser, setFoundUser] = useState<UserProfile | null>(null);
@@ -65,6 +69,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // One-click clear previous account on this computer
+  const handleClearCachedSession = () => {
+    StorageService.logout();
+    setLoginIdentifier('');
+    setLoginPassword('');
+    setUsername('');
+    setFullName('');
+    setComputerNumber('');
+    setSuccessMsg('🧹 Đã xóa sạch tài khoản và phiên đăng nhập cũ trên máy tính này! Học sinh mới có thể tạo tài khoản hoặc vào thi ngay.');
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
 
   // Handle Login
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -92,6 +108,55 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   };
 
+  // Handle Quick Computer Lab Join
+  const handleLabQuickSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (!fullName.trim()) {
+      setErrorMsg('Vui lòng nhập Họ và tên học sinh.');
+      return;
+    }
+    if (!className.trim()) {
+      setErrorMsg('Vui lòng nhập Lớp học (VD: 9A1).');
+      return;
+    }
+
+    // Auto-generate clean username for this student in the lab
+    const cleanLab = labPeriod.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanComp = computerNumber.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || `m${Math.floor(10 + Math.random() * 89)}`;
+    const autoUsername = `hs_${cleanLab}_${cleanComp}_${Date.now().toString().slice(-4)}`;
+
+    const labProfile: UserProfile = {
+      id: `user_lab_${Date.now()}`,
+      role: 'student',
+      username: autoUsername,
+      password: regPassword || '123456',
+      fullName: fullName.trim(),
+      grade,
+      className: className.trim(),
+      school: school.trim() || 'Trường THCS & THPT',
+      birthYear: birthYear.trim() || '2010',
+      email: `${autoUsername}@hocsinh.school.local`,
+      phoneNumber: '',
+      studentId: studentId.trim() || `SBD-${cleanComp.toUpperCase()}`,
+      labPeriod,
+      computerNumber: computerNumber.trim() || `Máy ${cleanComp}`,
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await StorageService.registerUser(labProfile);
+      setSuccessMsg(`Đã tạo tài khoản cho học sinh "${labProfile.fullName}" (${labPeriod} - ${computerNumber || 'Phòng máy'}). Đang vào bài thi...`);
+      setTimeout(() => {
+        onLoginSuccess(labProfile);
+      }, 700);
+    } catch {
+      setErrorMsg('Có lỗi xảy ra khi tạo tài khoản phòng máy.');
+    }
+  };
+
   // Handle Register
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,14 +175,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       setErrorMsg('Mật khẩu xác nhận không trùng khớp.');
       return;
     }
-    if (!email.trim() || !email.includes('@')) {
-      setErrorMsg('Vui lòng nhập Email hợp lệ (để xác thực và lấy lại mật khẩu).');
-      return;
+
+    // Teacher requires real email & phone. Students in school labs can leave them blank!
+    if (role === 'teacher') {
+      if (!email.trim() || !email.includes('@')) {
+        setErrorMsg('Vui lòng nhập Email hợp lệ (để xác thực và lấy lại mật khẩu giáo viên).');
+        return;
+      }
+      if (!phoneNumber.trim() || phoneNumber.trim().length < 8) {
+        setErrorMsg('Vui lòng nhập Số điện thoại hợp lệ (để nhận OTP khôi phục mật khẩu giáo viên).');
+        return;
+      }
+    } else {
+      // Student: if email provided, validate it; if not, assign friendly internal alias
+      if (email.trim() && !email.includes('@')) {
+        setErrorMsg('Email không đúng định dạng. Em có thể để trống nếu không có email cá nhân.');
+        return;
+      }
     }
-    if (!phoneNumber.trim() || phoneNumber.trim().length < 8) {
-      setErrorMsg('Vui lòng nhập Số điện thoại hợp lệ (để nhận OTP khôi phục mật khẩu).');
-      return;
-    }
+
     if (!fullName.trim()) {
       setErrorMsg('Vui lòng nhập Họ và tên.');
       return;
@@ -134,9 +210,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
+    const effectiveEmail = email.trim() || (role === 'student' ? `${username.trim().toLowerCase()}@hocsinh.school.local` : '');
+
     // Check duplicate username or email in Firestore cloud database
     try {
-      const cloudCheck = await checkCredentialExistsInFirestore(username, email);
+      const cloudCheck = await checkCredentialExistsInFirestore(username, effectiveEmail);
       if (cloudCheck.exists) {
         setErrorMsg(cloudCheck.reason || 'Tài khoản hoặc email này đã tồn tại trong Database.');
         return;
@@ -155,10 +233,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       className: className.trim() || (role === 'teacher' ? 'Tổ Bộ môn' : 'Lớp ' + grade.replace('Lớp ', '')),
       school: school.trim(),
       birthYear: birthYear.trim() || (role === 'teacher' ? '1988' : '2010'),
-      email: email.trim(),
+      email: effectiveEmail,
       phoneNumber: phoneNumber.trim(),
       studentId: role === 'student' ? (studentId.trim() || `HS${Math.floor(1000 + Math.random() * 9000)}`) : undefined,
       subject: role === 'teacher' ? subject : undefined,
+      labPeriod: role === 'student' ? labPeriod : undefined,
+      computerNumber: role === 'student' ? computerNumber : undefined,
       createdAt: new Date().toISOString()
     };
 
@@ -265,18 +345,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
           <h2 className="text-2xl font-black tracking-tight">
             {mode === 'login' && 'Đăng Nhập Tài Khoản'}
+            {mode === 'lab_quick' && '💻 Vào Thi Phòng Máy (Theo Tiết)'}
             {mode === 'register' && 'Tạo Tài Khoản Mới (Lưu Database)'}
             {mode === 'forgot_password' && 'Lấy Lại Mật Khẩu'}
           </h2>
 
           <p className="text-xs text-blue-100 mt-1">
             {mode === 'login' && 'Đăng nhập để vào giao diện Giáo viên (Tạo đề, chấm bài) hoặc Học sinh (Làm bài, ôn luyện).'}
-            {mode === 'register' && 'Nhập tài khoản, mật khẩu, email và SĐT để bảo mật và khôi phục khi cần.'}
+            {mode === 'lab_quick' && 'Chế độ đặc biệt cho phòng máy: không cần email/sđt, chọn Tiết học và Số máy, tự động xóa tài khoản cũ.'}
+            {mode === 'register' && 'Tạo tài khoản Giáo viên hoặc Học sinh. Với học sinh, email và SĐT là tùy chọn.'}
             {mode === 'forgot_password' && 'Xác thực qua Email hoặc Số điện thoại đã đăng ký để đặt lại mật khẩu mới.'}
           </p>
 
           {/* Mode Switch Tabs */}
-          <div className="flex items-center gap-2 mt-5 bg-black/25 p-1 rounded-xl text-xs">
+          <div className="flex flex-wrap items-center gap-1.5 mt-5 bg-black/25 p-1 rounded-xl text-xs">
             <button
               type="button"
               onClick={() => {
@@ -284,7 +366,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 setErrorMsg('');
                 setSuccessMsg('');
               }}
-              className={`flex-1 py-2 rounded-lg font-bold transition-all text-center cursor-pointer ${
+              className={`flex-1 min-w-[70px] py-2 rounded-lg font-bold transition-all text-center cursor-pointer ${
                 mode === 'login'
                   ? 'bg-white text-blue-900 shadow-xs'
                   : 'text-blue-100 hover:text-white'
@@ -296,11 +378,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <button
               type="button"
               onClick={() => {
+                setMode('lab_quick');
+                setErrorMsg('');
+                setSuccessMsg('');
+              }}
+              className={`flex-1 min-w-[120px] py-2 rounded-lg font-bold transition-all text-center cursor-pointer ${
+                mode === 'lab_quick'
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-xs'
+                  : 'text-amber-200 hover:text-amber-100'
+              }`}
+            >
+              💻 Phòng máy theo tiết
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
                 setMode('register');
                 setErrorMsg('');
                 setSuccessMsg('');
               }}
-              className={`flex-1 py-2 rounded-lg font-bold transition-all text-center cursor-pointer ${
+              className={`flex-1 min-w-[85px] py-2 rounded-lg font-bold transition-all text-center cursor-pointer ${
                 mode === 'register'
                   ? 'bg-white text-blue-900 shadow-xs'
                   : 'text-blue-100 hover:text-white'
@@ -317,13 +415,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 setSuccessMsg('');
                 setFoundUser(null);
               }}
-              className={`flex-1 py-2 rounded-lg font-bold transition-all text-center cursor-pointer ${
+              className={`flex-1 min-w-[70px] py-2 rounded-lg font-bold transition-all text-center cursor-pointer ${
                 mode === 'forgot_password'
                   ? 'bg-white text-blue-900 shadow-xs'
                   : 'text-blue-100 hover:text-white'
               }`}
             >
-              Quên mật khẩu?
+              Quên MK
             </button>
           </div>
         </div>
@@ -348,75 +446,256 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           {/* TAB 1: LOGIN FORM                                       */}
           {/* ======================================================= */}
           {mode === 'login' && (
-            <form onSubmit={handleLoginSubmit} autoComplete="off" className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Tên tài khoản, Email hoặc Số điện thoại *
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    autoComplete="off"
-                    value={loginIdentifier}
-                    onChange={(e) => setLoginIdentifier(e.target.value)}
-                    placeholder="Nhập tên tài khoản, email hoặc số điện thoại..."
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
-                  />
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            <div className="space-y-4">
+              {/* Computer Lab Handover Banner */}
+              <div className="p-3 rounded-2xl bg-slate-100 border border-slate-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div className="text-slate-600">
+                  <strong className="text-slate-900 block">💻 Bạn đang ngồi phòng máy theo tiết?</strong>
+                  <span>Nếu máy đang lưu tài khoản của học sinh tiết trước:</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearCachedSession}
+                  className="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-[11px] font-bold shadow-2xs transition-all shrink-0 cursor-pointer"
+                >
+                  🧹 Xóa tài khoản cũ trên máy
+                </button>
+              </div>
+
+              <form onSubmit={handleLoginSubmit} autoComplete="off" className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Tên tài khoản, Email hoặc Số điện thoại *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      autoComplete="off"
+                      value={loginIdentifier}
+                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      placeholder="Nhập tên tài khoản, email hoặc số điện thoại..."
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                    />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Mật khẩu *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot_password');
+                        setRecoveryContact(loginIdentifier);
+                        setErrorMsg('');
+                      }}
+                      className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
+                    >
+                      Quên mật khẩu?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      autoComplete="new-password"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="Nhập mật khẩu của bạn..."
+                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                    />
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span>Đăng Nhập Vào Hệ Thống</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* ======================================================= */}
+          {/* TAB 2: LAB QUICK JOIN (PHÒNG MÁY THEO TIẾT)             */}
+          {/* ======================================================= */}
+          {mode === 'lab_quick' && (
+            <form onSubmit={handleLabQuickSubmit} autoComplete="off" className="space-y-4">
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-amber-950">
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                    Chế độ dành riêng cho Phòng Máy Tin Học
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleClearCachedSession}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-[10px] font-bold shadow-2xs transition-all cursor-pointer"
+                  >
+                    🧹 Xóa tài khoản cũ trên máy này
+                  </button>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Không cần Email, không cần Số điện thoại. Học sinh chỉ cần nhập Họ tên, Lớp, chọn Tiết học và Số máy là vào thi được ngay!
+                </p>
+              </div>
+
+              {/* Lab Period & Machine Selection */}
+              <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-3">
+                <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                  <Building className="w-4 h-4 text-blue-600" />
+                  <span>Thông tin Tiết học & Vị trí máy</span>
+                </span>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Tiết học *
+                    </label>
+                    <select
+                      value={labPeriod}
+                      onChange={(e) => setLabPeriod(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="Tiết 1">Tiết 1</option>
+                      <option value="Tiết 2">Tiết 2</option>
+                      <option value="Tiết 3">Tiết 3</option>
+                      <option value="Tiết 4">Tiết 4</option>
+                      <option value="Tiết 5">Tiết 5</option>
+                      <option value="Tiết 6">Tiết 6</option>
+                      <option value="Tiết 7">Tiết 7</option>
+                      <option value="Tiết 8">Tiết 8</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Số máy (Phòng máy)
+                    </label>
+                    <input
+                      type="text"
+                      value={computerNumber}
+                      onChange={(e) => setComputerNumber(e.target.value)}
+                      placeholder="VD: Máy 08"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700">
-                    Mật khẩu *
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('forgot_password');
-                      setRecoveryContact(loginIdentifier);
-                      setErrorMsg('');
-                    }}
-                    className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
-                  >
-                    Quên mật khẩu?
-                  </button>
-                </div>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    autoComplete="new-password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="Nhập mật khẩu của bạn..."
-                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
-                  />
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+              {/* Student Identity */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <GraduationCap className="w-4 h-4 text-emerald-600" />
+                  <span>Thông tin Học sinh</span>
+                </span>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Họ và tên học sinh *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="VD: Nguyễn Văn An"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Khối lớp *
+                      </label>
+                      <select
+                        value={grade}
+                        onChange={(e) => setGrade(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option>Lớp 6</option>
+                        <option>Lớp 7</option>
+                        <option>Lớp 8</option>
+                        <option>Lớp 9</option>
+                        <option>Lớp 10</option>
+                        <option>Lớp 11</option>
+                        <option>Lớp 12</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Lớp học *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={className}
+                        onChange={(e) => setClassName(e.target.value)}
+                        placeholder="VD: 9A1"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Số báo danh / Mã HS
+                      </label>
+                      <input
+                        type="text"
+                        value={studentId}
+                        onChange={(e) => setStudentId(e.target.value)}
+                        placeholder="VD: HS01"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Mật khẩu (Mặc định 123456)
+                      </label>
+                      <input
+                        type="password"
+                        value={regPassword}
+                        onChange={(e) => setRegPassword(e.target.value)}
+                        placeholder="123456"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
-                <span>Đăng Nhập Vào Hệ Thống</span>
+                <span>🚀 Vào Phòng Thi ({labPeriod} - {computerNumber || 'Máy hiện tại'})</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}
 
           {/* ======================================================= */}
-          {/* TAB 2: REGISTER FORM                                    */}
+          {/* TAB 3: REGISTER FORM                                    */}
           {/* ======================================================= */}
           {mode === 'register' && (
             <form onSubmit={handleRegisterSubmit} autoComplete="off" className="space-y-4">
@@ -438,7 +717,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     <GraduationCap className="w-5 h-5 text-emerald-600" />
                     <div className="text-left">
                       <span className="font-bold text-xs block">Học Sinh</span>
-                      <span className="text-[10px] text-slate-500">Làm bài thi & điểm số</span>
+                      <span className="text-[10px] text-slate-500">Làm bài thi & xem điểm</span>
                     </div>
                   </button>
 
@@ -517,34 +796,34 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-3">
                 <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>2. Email & SĐT (Để lấy lại mật khẩu)</span>
+                  <span>2. Email & SĐT {role === 'student' ? '(Tùy chọn cho học sinh)' : '(Bắt buộc)'}</span>
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Email * (Khôi phục mật khẩu)
+                      Email {role === 'teacher' ? '*' : '(Không bắt buộc)'}
                     </label>
                     <input
                       type="email"
-                      required
+                      required={role === 'teacher'}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="VD: vanan.2010@gmail.com"
+                      placeholder={role === 'teacher' ? 'VD: giaovien@gmail.com' : 'Để trống nếu không có'}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Số điện thoại (SĐT) * (Nhận OTP)
+                      Số điện thoại {role === 'teacher' ? '*' : '(Không bắt buộc)'}
                     </label>
                     <input
                       type="tel"
-                      required
+                      required={role === 'teacher'}
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="VD: 0912345678"
+                      placeholder={role === 'teacher' ? 'VD: 0912345678' : 'Để trống nếu không có'}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
@@ -605,6 +884,41 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+
+                  {role === 'student' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Tiết học (Nếu ở phòng máy)
+                        </label>
+                        <select
+                          value={labPeriod}
+                          onChange={(e) => setLabPeriod(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+                        >
+                          <option value="Tiết 1">Tiết 1</option>
+                          <option value="Tiết 2">Tiết 2</option>
+                          <option value="Tiết 3">Tiết 3</option>
+                          <option value="Tiết 4">Tiết 4</option>
+                          <option value="Tiết 5">Tiết 5</option>
+                          <option value="Tiết 6">Tiết 6</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Số máy (Tùy chọn)
+                        </label>
+                        <input
+                          type="text"
+                          value={computerNumber}
+                          onChange={(e) => setComputerNumber(e.target.value)}
+                          placeholder="VD: Máy 05"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </>
+                  )}
 
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-700 mb-1">

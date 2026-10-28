@@ -19,10 +19,13 @@ import {
   CheckSquare,
   AlertCircle,
   Save,
-  Award
+  Award,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { Exam, ExamSubmission, EssayScoreDetail } from '../types';
 import { generateExamShareUrl } from '../utils/shareUrl';
+import { autoGradeSubmissionEssays, evaluateEssayLocally } from '../utils/essayGrader';
 
 interface ExamManagementProps {
   exams: Exam[];
@@ -43,6 +46,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
 }) => {
   const [selectedExamId, setSelectedExamId] = useState<string>(exams[0]?.id || '');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'gradebook' | 'exams_list'>('gradebook');
   
   // Share modal state
@@ -55,17 +59,25 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
   const [overallFeedback, setOverallFeedback] = useState<string>('');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
 
+  // AI Auto-grading state
+  const [isAutoGradingBatch, setIsAutoGradingBatch] = useState(false);
+  const [isAutoGradingSingle, setIsAutoGradingSingle] = useState(false);
+  const [autoGradeToast, setAutoGradeToast] = useState('');
+
   // Current active exam
   const currentExam = exams.find((e) => e.id === selectedExamId) || exams[0];
   const examSubmissions = submissions.filter((s) => s.examId === selectedExamId);
 
   // Filtered submissions
-  const filteredSubs = examSubmissions.filter(
-    (s) =>
+  const filteredSubs = examSubmissions.filter((s) => {
+    const matchesSearch =
       s.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.studentClass.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.studentId && s.studentId.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+      (s.studentId && s.studentId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (s.computerNumber && s.computerNumber.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesPeriod = selectedPeriod === 'all' || s.labPeriod === selectedPeriod;
+    return matchesSearch && matchesPeriod;
+  });
 
   // Statistics
   const totalSubs = examSubmissions.length;
@@ -116,6 +128,89 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
     setTimeout(() => setSaveSuccessMsg(false), 3000);
   };
 
+  // AI Auto-Grade for Single Submission (inside modal)
+  const handleAutoGradeSingleSubmission = async () => {
+    if (!inspectingSub || !currentExam) return;
+    setIsAutoGradingSingle(true);
+    try {
+      const result = await autoGradeSubmissionEssays(currentExam, inspectingSub.answers, inspectingSub.studentName);
+      setGradingDraft(result.essayScores);
+      setOverallFeedback(result.overallFeedback);
+      setSaveSuccessMsg(false);
+    } catch (err) {
+      console.error(err);
+      alert('Không thể tự động chấm lúc này. Vui lòng thử lại.');
+    } finally {
+      setIsAutoGradingSingle(false);
+    }
+  };
+
+  // AI Auto-Grade for Single Question inside modal
+  const handleAutoGradeSingleQuestion = (questionId: string) => {
+    if (!currentExam || !inspectingSub) return;
+    const q = currentExam.questions.find(item => item.id === questionId);
+    if (!q) return;
+
+    const studentAns = inspectingSub.answers[questionId] || '';
+    const evaluated = evaluateEssayLocally(q, studentAns);
+    setGradingDraft({
+      ...gradingDraft,
+      [questionId]: evaluated
+    });
+  };
+
+  // AI Auto-Grade ALL Submissions for this Exam (Batch)
+  const handleAutoGradeAllEssays = async () => {
+    if (!currentExam) return;
+    const hasEssay = (currentExam.questions || []).some(q => q.type === 'essay');
+    if (!hasEssay) {
+      alert('Đề thi này không có câu hỏi tự luận để chấm.');
+      return;
+    }
+
+    if (examSubmissions.length === 0) {
+      alert('Chưa có học sinh nào nộp bài để chấm tự luận.');
+      return;
+    }
+
+    const unGraded = examSubmissions.filter(s => s.gradingStatus === 'pending_review' || !s.essayScores);
+    if (unGraded.length === 0) {
+      if (!confirm('Tất cả bài thi đã được chấm điểm. Bạn có muốn để AI đối chiếu và chấm lại toàn bộ phần tự luận cho cả lớp không?')) {
+        return;
+      }
+    }
+
+    const targetSubs = unGraded.length > 0 ? unGraded : examSubmissions;
+    setIsAutoGradingBatch(true);
+    let count = 0;
+
+    for (const sub of targetSubs) {
+      try {
+        const result = await autoGradeSubmissionEssays(currentExam, sub.answers, sub.studentName);
+        const mcScore = sub.multipleChoiceScore ?? sub.score;
+        const total = Number((mcScore + result.totalEssayScore).toFixed(2));
+        const updated: ExamSubmission = {
+          ...sub,
+          essayScores: result.essayScores,
+          essayScore: result.totalEssayScore,
+          score: total,
+          gradingStatus: 'graded',
+          teacherFeedback: result.overallFeedback
+        };
+        if (onUpdateSubmission) {
+          onUpdateSubmission(updated);
+        }
+        count++;
+      } catch (err) {
+        console.error('Lỗi chấm tự động bài của ' + sub.studentName, err);
+      }
+    }
+
+    setIsAutoGradingBatch(false);
+    setAutoGradeToast(`Đã tự động chấm tự luận thành công cho ${count} bài thi bằng AI đối chiếu đáp án tương đương!`);
+    setTimeout(() => setAutoGradeToast(''), 6000);
+  };
+
   // Export CSV
   const handleExportCSV = () => {
     if (examSubmissions.length === 0) {
@@ -128,6 +223,8 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
       'Họ và tên', 
       'Lớp', 
       'SBD', 
+      'Tiết học',
+      'Số máy',
       'Điểm Trắc nghiệm',
       'Điểm Tự luận',
       'Tổng Điểm', 
@@ -142,6 +239,8 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
       `"${s.studentName}"`,
       `"${s.studentClass}"`,
       `"${s.studentId || ''}"`,
+      `"${s.labPeriod || ''}"`,
+      `"${s.computerNumber || ''}"`,
       s.multipleChoiceScore ?? s.score,
       s.essayScore ?? 0,
       s.score,
@@ -249,13 +348,35 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {currentExam && (
                 <>
+                  {/* AI Batch Essay Grading Button */}
+                  {(currentExam.questions || []).some(q => q.type === 'essay') && (
+                    <button
+                      type="button"
+                      onClick={handleAutoGradeAllEssays}
+                      disabled={isAutoGradingBatch}
+                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 text-white text-xs font-bold shadow-md shadow-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      title="AI tự động chấm toàn bộ câu tự luận cho học sinh theo barem và đáp án tương đương"
+                    >
+                      {isAutoGradingBatch ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      )}
+                      <span>
+                        {isAutoGradingBatch
+                          ? 'Đang chấm AI...'
+                          : `🤖 AI Chấm Tự Luận Cả Lớp (${pendingGradingCount} bài chờ)`}
+                      </span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setSharingExam(currentExam)}
-                    className="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 flex items-center gap-1.5"
+                    className="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer"
                   >
                     <Share2 className="w-3.5 h-3.5" />
                     <span>Lấy link thi</span>
@@ -264,10 +385,25 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                   <button
                     type="button"
                     onClick={() => onTakeExam(currentExam.id)}
-                    className="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 border border-blue-200 flex items-center gap-1.5"
+                    className="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 border border-blue-200 flex items-center gap-1.5 cursor-pointer"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     <span>Thi thử</span>
+                  </button>
+
+                  {/* Delete Exam Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đề thi "${currentExam.title}" không? Dữ liệu bài thi của học sinh cũng sẽ được xóa sạch.`)) {
+                        onDeleteExam(currentExam.id);
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Xóa vĩnh viễn đề thi này"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa đề thi</span>
                   </button>
                 </>
               )}
@@ -275,13 +411,21 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
               <button
                 type="button"
                 onClick={handleExportCSV}
-                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
+                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Xuất Excel/CSV</span>
               </button>
             </div>
           </div>
+
+          {/* AI Auto-grade Success Toast Banner */}
+          {autoGradeToast && (
+            <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 text-xs font-bold flex items-center gap-2 shadow-xs animate-in fade-in">
+              <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+              <span>{autoGradeToast}</span>
+            </div>
+          )}
 
           {/* Exam Structure Banner */}
           {currentExam && (
@@ -375,15 +519,31 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                 </h3>
               </div>
 
-              <div className="relative w-full sm:w-64">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Tìm học sinh, lớp, SBD..."
-                  className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                />
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={selectedPeriod}
+                  onChange={(e) => setSelectedPeriod(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white shadow-2xs"
+                >
+                  <option value="all">Tất cả các tiết</option>
+                  <option value="Tiết 1">Tiết 1</option>
+                  <option value="Tiết 2">Tiết 2</option>
+                  <option value="Tiết 3">Tiết 3</option>
+                  <option value="Tiết 4">Tiết 4</option>
+                  <option value="Tiết 5">Tiết 5</option>
+                  <option value="Tiết 6">Tiết 6</option>
+                </select>
+
+                <div className="relative w-full sm:w-56">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Tìm học sinh, lớp, SBD, máy..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  />
+                </div>
               </div>
             </div>
 
@@ -398,7 +558,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                       <th className="py-3 px-4">STT</th>
                       <th className="py-3 px-4">Họ và tên</th>
-                      <th className="py-3 px-4">Lớp / SBD</th>
+                      <th className="py-3 px-4">Lớp / Tiết / Máy</th>
                       <th className="py-3 px-4 text-center">Trắc nghiệm</th>
                       <th className="py-3 px-4 text-center">Tự luận</th>
                       <th className="py-3 px-4 text-center">Tổng Điểm</th>
@@ -418,9 +578,25 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          <span className="font-bold text-slate-800">{sub.studentClass}</span>
-                          {sub.studentId && (
-                            <span className="text-slate-400 ml-1">({sub.studentId})</span>
+                          <div className="font-bold text-slate-800">
+                            {sub.studentClass}
+                            {sub.studentId && (
+                              <span className="text-slate-400 font-normal ml-1">({sub.studentId})</span>
+                            )}
+                          </div>
+                          {(sub.labPeriod || sub.computerNumber) && (
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              {sub.labPeriod && (
+                                <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[10px] border border-blue-200/60">
+                                  {sub.labPeriod}
+                                </span>
+                              )}
+                              {sub.computerNumber && (
+                                <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">
+                                  {sub.computerNumber}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="py-3 px-4 text-center font-bold text-blue-700">
@@ -564,10 +740,25 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                   <button
                     type="button"
                     onClick={() => onTakeExam(ex.id)}
-                    className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs"
+                    className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer"
                     title="Vào phòng thi"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Delete Exam Button on Card */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đề thi "${ex.title}" không? Dữ liệu bài thi của học sinh cũng sẽ bị xóa bỏ.`)) {
+                        onDeleteExam(ex.id);
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Xóa vĩnh viễn đề thi này"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Xóa</span>
                   </button>
                 </div>
               </div>
@@ -591,6 +782,8 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Đề: {currentExam.title} | Nộp lúc {new Date(inspectingSub.submittedAt).toLocaleString('vi-VN')}
+                  {inspectingSub.labPeriod && ` | ${inspectingSub.labPeriod}`}
+                  {inspectingSub.computerNumber && ` | ${inspectingSub.computerNumber}`}
                 </p>
               </div>
 
@@ -602,6 +795,39 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
               </div>
             </div>
 
+            {/* AI Auto-grade Action Banner for this submission */}
+            {(currentExam.questions || []).some(q => q.type === 'essay') && (
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-purple-950">
+                      Chấm tự luận tự động bằng AI (Đối chiếu đáp án tương đương)
+                    </div>
+                    <div className="text-[11px] text-purple-700">
+                      AI so khớp ý nghĩa và các bước giải của học sinh với đáp án mẫu của giáo viên để tính điểm chính xác
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAutoGradeSingleSubmission}
+                  disabled={isAutoGradingSingle}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isAutoGradingSingle ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  )}
+                  <span>{isAutoGradingSingle ? 'Đang chấm AI...' : '🤖 AI Chấm Tự Động Bài Này'}</span>
+                </button>
+              </div>
+            )}
+
             {/* Score Breakdown Summary */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
               <div>
@@ -611,7 +837,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                 </strong>
               </div>
               <div>
-                <span className="text-slate-500 block">Điểm Tự luận (Giáo viên chấm):</span>
+                <span className="text-slate-500 block">Điểm Tự luận (Đã tính):</span>
                 <strong className="text-purple-700 text-sm font-bold">
                   {inspectingSub.essayScore ?? 0} / {currentExam.essayPoints ?? 3}đ
                 </strong>
@@ -656,9 +882,19 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                           </span>
                         </div>
 
-                        {/* Point Input */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-purple-900">Cho điểm câu này:</span>
+                        {/* Point Input & Quick AI Grade */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleAutoGradeSingleQuestion(q.id)}
+                            className="px-2.5 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                            title="AI tự động đối chiếu bài làm học sinh với đáp án câu này"
+                          >
+                            <Sparkles className="w-3 h-3 text-purple-600" />
+                            <span>AI chấm câu này</span>
+                          </button>
+
+                          <span className="text-xs font-bold text-purple-900">Điểm:</span>
                           <input
                             type="number"
                             step={0.25}

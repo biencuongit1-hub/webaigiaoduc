@@ -19,6 +19,8 @@ const SUBMISSIONS_STORAGE_KEY = 'gvdm_azota_submissions_v1';
 const FIREBASE_CONFIG_KEY = 'gvdm_firebase_config_v1';
 const USER_PROFILE_STORAGE_KEY = 'gvdm_current_user_profile_v1';
 const USERS_LIST_STORAGE_KEY = 'gvdm_all_user_profiles_v1';
+const DELETED_EXAMS_KEY = 'gvdm_deleted_exam_ids_v1';
+const SEEDED_INITIAL_KEY = 'gvdm_has_seeded_initial_v1';
 
 export const INITIAL_SAMPLE_USERS: UserProfile[] = [];
 
@@ -386,22 +388,56 @@ export const INITIAL_SAMPLE_SUBMISSIONS: ExamSubmission[] = [
 ];
 
 export const StorageService = {
+  getDeletedExamIds(): Set<string> {
+    try {
+      const data = localStorage.getItem(DELETED_EXAMS_KEY);
+      return data ? new Set(JSON.parse(data)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  },
+
+  addDeletedExamId(id: string): void {
+    const set = this.getDeletedExamIds();
+    set.add(id);
+    localStorage.setItem(DELETED_EXAMS_KEY, JSON.stringify(Array.from(set)));
+  },
+
+  removeDeletedExamId(id: string): void {
+    const set = this.getDeletedExamIds();
+    if (set.has(id)) {
+      set.delete(id);
+      localStorage.setItem(DELETED_EXAMS_KEY, JSON.stringify(Array.from(set)));
+    }
+  },
+
   getExams(): Exam[] {
+    const deleted = this.getDeletedExamIds();
     try {
       const data = localStorage.getItem(EXAMS_STORAGE_KEY);
       if (!data) {
-        localStorage.setItem(EXAMS_STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_EXAMS));
-        // Seed initial exams to Firestore in background
-        INITIAL_SAMPLE_EXAMS.forEach(ex => saveExamToFirestore(ex).catch(() => {}));
-        return INITIAL_SAMPLE_EXAMS;
+        const hasSeeded = localStorage.getItem(SEEDED_INITIAL_KEY);
+        // Only seed once. If user has initialized and deleted everything, do not resurrect!
+        if (!hasSeeded) {
+          localStorage.setItem(SEEDED_INITIAL_KEY, 'true');
+          const initial = INITIAL_SAMPLE_EXAMS.filter(e => !deleted.has(e.id));
+          localStorage.setItem(EXAMS_STORAGE_KEY, JSON.stringify(initial));
+          initial.forEach(ex => saveExamToFirestore(ex).catch(() => {}));
+          return initial;
+        }
+        return [];
       }
-      return JSON.parse(data);
+      const list: Exam[] = JSON.parse(data);
+      return list.filter(e => !deleted.has(e.id));
     } catch {
-      return INITIAL_SAMPLE_EXAMS;
+      return [];
     }
   },
 
   async saveExam(exam: Exam): Promise<void> {
+    // If saving an exam with this id, remove from deleted IDs
+    this.removeDeletedExamId(exam.id);
+
     const exams = this.getExams();
     const existingIndex = exams.findIndex((e) => e.id === exam.id);
     if (existingIndex >= 0) {
@@ -421,10 +457,25 @@ export const StorageService = {
   },
 
   async deleteExam(id: string): Promise<void> {
-    const exams = this.getExams().filter((e) => e.id !== id);
-    localStorage.setItem(EXAMS_STORAGE_KEY, JSON.stringify(exams));
+    // Mark as permanently deleted so cloud sync / reload never resurrects it
+    this.addDeletedExamId(id);
+
+    // Remove from local exams list
+    const remainingExams = this.getExams().filter((e) => e.id !== id);
+    localStorage.setItem(EXAMS_STORAGE_KEY, JSON.stringify(remainingExams));
+
+    // Also remove related submissions to avoid orphan data
+    try {
+      const remainingSubs = this.getSubmissions().filter((s) => s.examId !== id);
+      localStorage.setItem(SUBMISSIONS_STORAGE_KEY, JSON.stringify(remainingSubs));
+    } catch {
+      // Ignore
+    }
+
+    // Permanently remove from Firestore
     try {
       await deleteExamFromFirestore(id);
+      console.log(`[Firebase] Đã xóa vĩnh viễn đề thi "${id}" khỏi Firestore.`);
     } catch (err) {
       console.warn('[Firebase] Lỗi xóa đề từ Firestore:', err);
     }
@@ -726,8 +777,17 @@ export const StorageService = {
   async syncWithCloud(): Promise<{ examCount: number; submissionCount: number; userCount: number }> {
     try {
       await testConnection();
-      const cloudExams = await getExamsFromFirestore();
-      const localExams = this.getExams();
+      const deletedIds = this.getDeletedExamIds();
+      const cloudExamsRaw = await getExamsFromFirestore();
+      const cloudExams = cloudExamsRaw.filter(e => !deletedIds.has(e.id));
+      const localExams = this.getExams().filter(e => !deletedIds.has(e.id));
+
+      // Clean up any deleted exams that still exist in Firestore
+      for (const delId of deletedIds) {
+        if (cloudExamsRaw.some(ce => ce.id === delId)) {
+          deleteExamFromFirestore(delId).catch(() => {});
+        }
+      }
 
       // Merge cloud exams with local exams
       const examMap = new Map<string, Exam>();

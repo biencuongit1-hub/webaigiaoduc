@@ -184,8 +184,10 @@ export function parseRawExamText(
   let detectedMcPoints: number | null = null;
   let detectedEssayPoints: number | null = null;
 
-  const mcHeaderRegex = /(?:I|1|A)[\.:\s\-–—]+(?:PHẦN\s*)?TRẮC\s*NGHIỆM[^\n]*?(?:\(([\d\.,]+)\s*(?:đ|điểm)\)|([\d\.,]+)\s*(?:đ|điểm))/i;
-  const essayHeaderRegex = /(?:II|2|B)[\.:\s\-–—]+(?:PHẦN\s*)?TỰ\s*LUẬN[^\n]*?(?:\(([\d\.,]+)\s*(?:đ|điểm)\)|([\d\.,]+)\s*(?:đ|điểm))/i;
+  // Regex supports "I. Trắc nghiệm (7đ)", "I.TRẮC NGHIỆM", "PHẦN I. TRẮC NGHIỆM"
+  const mcHeaderRegex = /(?:(?:PHẦN\s*)?(?:I|1|A)\b|I)[\.:\s\-–—/]*\s*(?:PHẦN\s*)?TRẮC\s*NGHIỆM[^\n]*?(?:\(([\d\.,]+)\s*(?:đ|điểm)\)|([\d\.,]+)\s*(?:đ|điểm))/i;
+  // Regex supports "II.Tự luận (3đ)", "II. Tự luận", "II.TỰ LUẬN", "PHẦN II. TỰ LUẬN"
+  const essayHeaderRegex = /(?:(?:PHẦN\s*)?(?:II|2|B)\b|II)[\.:\s\-–—/]*\s*(?:PHẦN\s*)?TỰ\s*LUẬN[^\n]*?(?:\(([\d\.,]+)\s*(?:đ|điểm)\)|([\d\.,]+)\s*(?:đ|điểm))/i;
 
   const mcHeaderMatch = mainExamText.match(mcHeaderRegex);
   if (mcHeaderMatch) {
@@ -200,8 +202,9 @@ export function parseRawExamText(
   }
 
   // 5. Partition Exam into Multiple Choice & Essay text blocks
-  const essaySectionSplitRegex = /(?:\n|^)\s*(?:(?:II|2|B)[\.:\s\-–—]+(?:PHẦN\s*)?TỰ\s*LUẬN|PHẦN\s*(?:TỰ\s*LUẬN|II|2)[\s:]*)/i;
-  const mcSectionSplitRegex = /(?:\n|^)\s*(?:(?:I|1|A)[\.:\s\-–—]+(?:PHẦN\s*)?TRẮC\s*NGHIỆM|PHẦN\s*(?:TRẮC\s*NGHIỆM|I|1)[\s:]*)/i;
+  // Specifically captures "II.Tự luận", "II. Tự luận", "II. TỰ LUẬN", "PHẦN II. TỰ LUẬN"
+  const essaySectionSplitRegex = /(?:\n|^)\s*(?:(?:(?:PHẦN\s*)?(?:II|2|B)\b|II)[\.:\s\-–—/]*\s*(?:PHẦN\s*)?TỰ\s*LUẬN|PHẦN\s*TỰ\s*LUẬN|TỰ\s*LUẬN\s*[\.:\s\-–—])/i;
+  const mcSectionSplitRegex = /(?:\n|^)\s*(?:(?:(?:PHẦN\s*)?(?:I|1|A)\b|I)[\.:\s\-–—/]*\s*(?:PHẦN\s*)?TRẮC\s*NGHIỆM|PHẦN\s*TRẮC\s*NGHIỆM|TRẮC\s*NGHIỆM\s*[\.:\s\-–—])/i;
 
   let mcText = mainExamText;
   let essayText = '';
@@ -340,8 +343,8 @@ function parseSingleEssayBlock(
   defaultImages?: string[],
   essayAnswerKeyMap?: Record<number, string>
 ): Question | null {
-  // Skip section header title lines
-  if (/^(?:PHẦN\s*)?TỰ\s*LUẬN/i.test(blockContent) && blockContent.length < 50) {
+  // Skip section header title lines like "II.Tự luận", "II. Tự luận", "PHẦN II. TỰ LUẬN"
+  if (/^(?:(?:(?:PHẦN\s*)?(?:II|2|B)\b|PHẦN)?[\.:\s\-–—/]*\s*)?TỰ\s*LUẬN/i.test(blockContent) && blockContent.length < 70) {
     return null;
   }
 
@@ -867,7 +870,7 @@ B. x ≠ -3 và x ≠ -1
 C. x ≠ -1
 D. x ≠ -3 hoặc x ≠ -1
 
-Phần II: Tự luận (8đ)
+II. Tự luận (8đ)
 
 Câu 5 (4đ). Giải các phương trình sau:
 1) -5x + 6 = 3x - 10

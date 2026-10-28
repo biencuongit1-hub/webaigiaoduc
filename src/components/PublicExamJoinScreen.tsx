@@ -36,9 +36,21 @@ export const PublicExamJoinScreen: React.FC<PublicExamJoinScreenProps> = ({
   const [className, setClassName] = useState(currentUser?.className || '9A1');
   const [school, setSchool] = useState(currentUser?.school || 'Trường THCS Nguyễn Đôn');
   const [studentId, setStudentId] = useState(currentUser?.studentId || '');
+  const [labPeriod, setLabPeriod] = useState(currentUser?.labPeriod || 'Tiết 1');
+  const [computerNumber, setComputerNumber] = useState(currentUser?.computerNumber || '');
   const [examPassword, setExamPassword] = useState('');
 
   const [errorMessage, setErrorMessage] = useState('');
+  const [notificationMsg, setNotificationMsg] = useState('');
+
+  const handleClearPreviousAccount = () => {
+    StorageService.logout();
+    setFullName('');
+    setStudentId('');
+    setComputerNumber('');
+    setNotificationMsg('🧹 Đã xóa tài khoản cũ trên máy này. Em có thể nhập thông tin của mình để vào thi!');
+    setTimeout(() => setNotificationMsg(''), 4000);
+  };
 
   const mcCount = (exam.questions || []).filter(q => (q.type || 'multiple_choice') === 'multiple_choice').length;
   const essayCount = (exam.questions || []).filter(q => q.type === 'essay').length;
@@ -72,7 +84,7 @@ export const PublicExamJoinScreen: React.FC<PublicExamJoinScreenProps> = ({
       return;
     }
 
-    // Create or use profile
+    // Create or use profile with lab period & computer number
     let studentProfile: UserProfile;
     if (currentUser) {
       studentProfile = {
@@ -81,7 +93,9 @@ export const PublicExamJoinScreen: React.FC<PublicExamJoinScreenProps> = ({
         grade,
         className: className.trim(),
         school: school.trim(),
-        studentId: studentId.trim() || currentUser.studentId
+        studentId: studentId.trim() || currentUser.studentId,
+        labPeriod,
+        computerNumber: computerNumber.trim() || currentUser.computerNumber
       };
       StorageService.setCurrentUser(studentProfile);
     } else {
@@ -95,6 +109,8 @@ export const PublicExamJoinScreen: React.FC<PublicExamJoinScreenProps> = ({
         school: school.trim() || 'Trường THCS & THPT',
         studentId: studentId.trim() || `SBD-${Math.floor(100 + Math.random() * 900)}`,
         birthYear: '2010',
+        labPeriod,
+        computerNumber: computerNumber.trim() || undefined,
         createdAt: new Date().toISOString()
       };
       StorageService.setCurrentUser(studentProfile);
@@ -195,12 +211,43 @@ export const PublicExamJoinScreen: React.FC<PublicExamJoinScreenProps> = ({
 
         {/* Card Body: Student Info Form */}
         <div className="p-6 sm:p-8 space-y-5">
+          {notificationMsg && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{notificationMsg}</span>
+            </div>
+          )}
+
           {errorMessage && (
             <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
+
+          {/* Computer Lab Handover Banner */}
+          <div className="p-3.5 rounded-2xl bg-slate-100 border border-slate-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                <span>💻 Phòng máy theo tiết:</span>
+                {currentUser ? (
+                  <span className="text-blue-700">Đang lưu máy của {currentUser.fullName} ({currentUser.className})</span>
+                ) : (
+                  <span className="text-slate-500">Chưa có tài khoản lưu trên máy này</span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Nếu bạn là học sinh của tiết học mới, hãy nhấn nút bên cạnh để làm mới máy.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearPreviousAccount}
+              className="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 text-[11px] font-bold shadow-2xs transition-all shrink-0 cursor-pointer"
+            >
+              🧹 Đổi học sinh / Xóa tài khoản cũ
+            </button>
+          </div>
 
           {/* Notification on Proctoring / Anti-cheat */}
           {exam.settings?.antiCheatProctoring && (
@@ -216,6 +263,42 @@ export const PublicExamJoinScreen: React.FC<PublicExamJoinScreenProps> = ({
             <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5 pb-1 border-b border-slate-100">
               <User className="w-4 h-4 text-blue-600" />
               <span>Thông tin thí sinh dự thi</span>
+            </div>
+
+            {/* Lab Period & Machine Selection */}
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-blue-50/60 border border-blue-200">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tiết học *
+                </label>
+                <select
+                  value={labPeriod}
+                  onChange={(e) => setLabPeriod(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="Tiết 1">Tiết 1</option>
+                  <option value="Tiết 2">Tiết 2</option>
+                  <option value="Tiết 3">Tiết 3</option>
+                  <option value="Tiết 4">Tiết 4</option>
+                  <option value="Tiết 5">Tiết 5</option>
+                  <option value="Tiết 6">Tiết 6</option>
+                  <option value="Tiết 7">Tiết 7</option>
+                  <option value="Tiết 8">Tiết 8</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Số máy (Phòng máy)
+                </label>
+                <input
+                  type="text"
+                  value={computerNumber}
+                  onChange={(e) => setComputerNumber(e.target.value)}
+                  placeholder="VD: Máy 12"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 bg-white"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -280,7 +363,7 @@ export const PublicExamJoinScreen: React.FC<PublicExamJoinScreenProps> = ({
                   value={school}
                   onChange={(e) => setSchool(e.target.value)}
                   placeholder="VD: Trường THCS Nguyễn Đôn"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 font-medium"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500 font-medium"
                 />
               </div>
 
@@ -322,7 +405,7 @@ export const PublicExamJoinScreen: React.FC<PublicExamJoinScreenProps> = ({
               className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer mt-4"
             >
               <CheckCircle2 className="w-5 h-5" />
-              <span>BẮT ĐẦU VÀO LÀM BÀI THI NGAY</span>
+              <span>BẮT ĐẦU VÀO LÀM BÀI THI ({labPeriod})</span>
               <ArrowRight className="w-4 h-4 ml-1" />
             </button>
           </form>

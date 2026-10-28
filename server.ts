@@ -58,7 +58,7 @@ async function startServer() {
       const defaultPrompt = `Bạn là chuyên gia số hóa đề thi thông minh của hệ thống Giáo viên thời đại AI.
 Hãy phân tích hình ảnh đề thi này và trích xuất TOÀN BỘ nội dung đề thi một cách đầy đủ và chính xác theo định dạng chuẩn:
 
-I. PHẦN TRẮC NGHIỆM:
+I. TRẮC NGHIỆM (hoặc I. PHẦN TRẮC NGHIỆM):
 Câu 1: [Nội dung câu hỏi]
 A. [Phương án A]
 B. [Phương án B]
@@ -67,7 +67,7 @@ D. [Phương án D]
 
 Câu 2: ...
 
-II. PHẦN TỰ LUẬN:
+II. Tự luận (ĐẶC BIỆT BẮT BUỘC: Nếu đề có câu hỏi tự luận, PHẢI có tiêu đề "II. Tự luận" hoặc "II.Tự luận" trước các câu hỏi tự luận):
 Câu [N]: [Nội dung câu hỏi tự luận]
 
 ------------------- HẾT -------------------
@@ -78,11 +78,17 @@ câu [N]. [Câu trả lời / lời giải chi tiết của câu tự luận]
 
 Quy tắc bắt buộc:
 1. Trích xuất đầy đủ tất cả các câu hỏi nhìn thấy trong ảnh.
-2. Giữ nguyên công thức toán học, lý, hóa, số mũ (², ³, √, Δ, π, ...).
-3. Đảm bảo các phương án lựa chọn được đánh dấu rõ ràng A., B., C., D. trên từng dòng.
-4. Nếu có hình vẽ, ghi chú [Hình ảnh minh họa: mô tả hình vẽ] ngay dưới câu hỏi.
-5. Đáp án PHẢI đặt ở phần cuối cùng sau chữ HẾT. Nếu trong ảnh chưa có đáp án, hãy tự động giải và bổ sung đáp án sau chữ HẾT: trắc nghiệm dạng 1.D, tự luận dạng câu [N]. câu trả lời.
-6. Chỉ trả về nội dung đề thi đã số hóa tiếng Việt, không kèm lời giải thích bên ngoài.`;
+2. CẤU TRÚC ĐỀ THI:
+   - Nếu đề có câu hỏi tự luận, BẮT BUỘC phải có tiêu đề: "II. Tự luận" (hoặc "II.Tự luận", "II. TỰ LUẬN") trước các câu hỏi tự luận.
+   - Nếu đề có phần trắc nghiệm, có tiêu đề: "I. Trắc nghiệm" (hoặc "I. TRẮC NGHIỆM").
+   - Nếu đề hoàn toàn là trắc nghiệm (không có tự luận) thì không ghi "II. Tự luận".
+3. Giữ nguyên công thức toán học, lý, hóa, số mũ (², ³, √, Δ, π, ...).
+4. Đảm bảo các phương án lựa chọn được đánh dấu rõ ràng A., B., C., D. trên từng dòng.
+5. Nếu có hình vẽ, ghi chú [Hình ảnh minh họa: mô tả hình vẽ] ngay dưới câu hỏi.
+6. ĐÁP ÁN: Đặt ở phần cuối cùng sau chữ HẾT. Nếu trong ảnh chưa có đáp án, hãy tự động giải và bổ sung đáp án sau chữ HẾT:
+   - Trắc nghiệm có dạng: 1.D (nghĩa là câu 1 đáp án D, ví dụ: 1.D  2.B  3.A  4.C ...)
+   - Tự luận có dạng: câu [số thứ tự]. câu trả lời (ví dụ: câu 37. Học sinh nêu được... / câu 38. Lời giải: ...)
+7. Chỉ trả về nội dung đề thi đã số hóa tiếng Việt, không kèm lời giải thích bên ngoài.`;
 
       const promptToUse = customPrompt || defaultPrompt;
 
@@ -179,6 +185,14 @@ Quy tắc bắt buộc:
       const solvePrompt = `Bạn là chuyên gia sư phạm và khảo thí số 1 Việt Nam.
 Hãy giải chính xác toàn bộ đề thi dưới đây và bổ sung toàn bộ đáp án vào cuối đề theo đúng quy cách:
 
+QUY TẮC CẤU TRÚC ĐỀ THI:
+1. ĐỀ NẾU CÓ TỰ LUẬN THÌ BẮT BUỘC SẼ CÓ TIÊU ĐỀ:
+II. Tự luận
+(hoặc II.Tự luận)
+- Nếu đề ban đầu có các câu hỏi tự luận nhưng chưa có tiêu đề "II. Tự luận", bạn BẮT BUỘC chèn dòng tiêu đề "II. Tự luận" ngay trước câu hỏi tự luận đầu tiên.
+- Nếu đề có phần trắc nghiệm, có tiêu đề "I. Trắc nghiệm" (hoặc "I. TRẮC NGHIỆM").
+- Giữ nguyên toàn bộ nội dung đề bài ban đầu (nội dung câu hỏi và các phương án A, B, C, D).
+
 QUY TẮC BẮT BUỘC VỀ ĐÁP ÁN:
 1. Đáp án phải nằm ở phần cuối cùng, ngay sau chữ HẾT cuối cùng của đề thi:
 ------------------- HẾT -------------------
@@ -197,7 +211,7 @@ câu 37. Học sinh nêu được 3 biểu hiện vi phạm đạo đức và ph
 câu 38. Lời giải: Bước 1... Bước 2... Kết quả x = 2.
 
 4. CẤU TRÚC TRẢ VỀ:
-- Giữ nguyên toàn bộ đề bài ban đầu (nội dung câu hỏi và các phương án A, B, C, D).
+- Toàn bộ đề bài (đảm bảo có tiêu đề "II. Tự luận" trước các câu hỏi tự luận nếu đề có tự luận).
 - Nếu cuối đề bài ban đầu chưa có dòng chữ HẾT, hãy thêm:
 ------------------- HẾT -------------------
 - Ngay sau dòng HẾT, thêm mục "ĐÁP ÁN" chứa đáp án trắc nghiệm (1.D) và đáp án tự luận (câu [N]. câu trả lời).
@@ -240,6 +254,129 @@ ${rawText}`;
       console.error('Lỗi API /api/auto-solve-exam:', err);
       return res.status(500).json({
         error: err instanceof Error ? err.message : 'Lỗi xử lý tự động giải đề.',
+      });
+    }
+  });
+
+  // Auto-grade essay questions endpoint using Gemini AI semantic matching
+  app.post('/api/auto-grade-essay', async (req, res) => {
+    try {
+      const { examTitle, questions, studentAnswers, studentName } = req.body;
+
+      if (!questions || !Array.isArray(questions) || questions.length === 0) {
+        return res.status(400).json({ error: 'Thiếu danh sách câu hỏi tự luận cần chấm.' });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          error: 'Chưa cấu hình GEMINI_API_KEY trên hệ thống máy chủ.',
+        });
+      }
+
+      const ai = getGeminiClient();
+
+      const questionsPromptText = questions.map((q: any, idx: number) => {
+        const studentAns = studentAnswers?.[q.id] || '(Học sinh để trống không làm bài)';
+        const modelAns = q.modelAnswer || q.explanation || 'Đáp án chuẩn theo barem giáo viên';
+        const maxScore = Number(q.points) || 1.5;
+        return `
+--- CÂU ${idx + 1} (Mã ID: "${q.id}") ---
+- Đề bài: ${q.text}
+- Điểm tối đa: ${maxScore} điểm
+- Đáp án mẫu / Barem chuẩn của giáo viên:
+${modelAns}
+- Bài làm thực tế của học sinh:
+${studentAns}
+`;
+      }).join('\n');
+
+      const gradingPrompt = `Bạn là giám khảo khảo thí chuyên nghiệp và công tâm hàng đầu Việt Nam.
+Hãy chấm điểm các câu hỏi TỰ LUẬN trong bài thi "${examTitle || 'Đề kiểm tra'}" của học sinh "${studentName || 'Học sinh'}".
+
+NGUYÊN TẮC CHẤM TỰ LUẬN TƯƠNG ĐƯƠNG (SEMANTIC EQUIVALENCE):
+1. ĐỐI CHIẾU Ý NGHĨA THỰC CHẤT, KHÔNG BẮT BẺ TỪNG TỪ:
+   - Học sinh có thể diễn đạt bằng ngôn từ riêng của mình, cách trình bày khác biệt hoặc thứ tự các ý khác nhau nhưng ĐÚNG BẢN CHẤT kiến thức thì VẪN ĐƯỢC ĐIỂM TỐI ĐA hoặc ĐIỂM TƯƠNG ĐƯƠNG.
+   - Đối với môn Toán/Khoa học: Nếu học sinh làm theo cách giải khác đáp án mẫu nhưng các bước lập luận logic, kết quả chính xác thì vẫn chấm điểm tối đa.
+   - Nếu học sinh làm được một phần các ý, tính toán đúng bước đầu: Cho điểm thành phần tương ứng theo thang điểm (làm tròn đến 0.25).
+   - Nếu học sinh để trống hoặc trả lời hoàn toàn sai lệch lạc đề: Cho 0 điểm.
+
+2. ĐIỂM SỐ:
+   - "score": Điểm số thực tế học sinh đạt được (từ 0.0 đến điểm tối đa của câu đó).
+   - "maxScore": Điểm tối đa của câu.
+   - "teacherNote": Nhận xét sư phạm ngắn gọn, rõ ràng (1-3 câu): Nêu rõ ý đúng học sinh đã đạt được, ý còn thiếu cần bổ sung hoặc lỗi sai cần lưu ý.
+
+3. YÊU CẦU ĐỊNH DẠNG TRẢ VỀ:
+Trả về DUY NHẤT một chuỗi JSON hợp lệ (không kèm markdown ngoài JSON, không giải thích ngoài code block json) theo cấu trúc:
+{
+  "essayScores": {
+    "<Mã ID câu hỏi>": {
+      "score": 1.25,
+      "maxScore": 1.5,
+      "teacherNote": "nhận xét câu này"
+    }
+  },
+  "totalEssayScore": 2.75,
+  "overallFeedback": "Lời nhận xét chung động viên và định hướng cho toàn bài thi của học sinh"
+}
+
+DANH SÁCH BÀI LÀM CẦN CHẤM:
+${questionsPromptText}`;
+
+      const candidateModels = [
+        'gemini-flash-latest',
+        'gemini-3.8-flash',
+        'gemini-3.1-flash-lite',
+      ];
+
+      let rawResponseText = '';
+      let lastError: any = null;
+
+      for (const model of candidateModels) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: gradingPrompt,
+          });
+          rawResponseText = response.text || '';
+          if (rawResponseText.trim()) break;
+        } catch (err: any) {
+          lastError = err;
+          console.warn(`Model ${model} grading attempt failed:`, err?.message || err);
+        }
+      }
+
+      if (!rawResponseText.trim()) {
+        return res.status(500).json({
+          error: lastError?.message || 'Không thể chấm tự luận tự động bằng AI lúc này.',
+        });
+      }
+
+      // Clean markdown json fences if any
+      let jsonClean = rawResponseText.trim();
+      if (jsonClean.startsWith('```json')) {
+        jsonClean = jsonClean.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+      } else if (jsonClean.startsWith('```')) {
+        jsonClean = jsonClean.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
+      }
+
+      let parsedResult;
+      try {
+        parsedResult = JSON.parse(jsonClean);
+      } catch (parseErr) {
+        const match = jsonClean.match(/\{[\s\S]*\}/);
+        if (match) {
+          parsedResult = JSON.parse(match[0]);
+        } else {
+          throw parseErr;
+        }
+      }
+
+      return res.json(parsedResult);
+    } catch (err: any) {
+      console.error('Lỗi API /api/auto-grade-essay:', err);
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : 'Lỗi xử lý chấm tự luận tự động.',
       });
     }
   });
