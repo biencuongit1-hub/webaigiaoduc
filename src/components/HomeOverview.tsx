@@ -19,31 +19,41 @@ import {
   Globe2,
   BrainCircuit,
   ExternalLink,
-  Lock
+  Lock,
+  Trash2,
+  AlertTriangle,
+  Plus
 } from 'lucide-react';
-import { Exam } from '../types';
+import { Exam, UserProfile } from '../types';
 
 export interface HomeOverviewProps {
   exams: Exam[];
+  currentUser?: UserProfile | null;
   onNavigate?: (tab: string) => void;
   onNavigateTab?: (tab: string) => void;
   onOpenExam?: (examId: string) => void;
   onSelectExam?: (examId: string) => void;
   onOpenExamByCode?: () => void;
   onJoinExamCode?: (code: string) => void;
+  onDeleteExam?: (id: string) => void;
 }
 
 export const HomeOverview: React.FC<HomeOverviewProps> = ({
   exams,
+  currentUser,
   onNavigate,
   onNavigateTab,
   onOpenExam,
   onSelectExam,
   onOpenExamByCode,
-  onJoinExamCode
+  onJoinExamCode,
+  onDeleteExam
 }) => {
   const [showCodeInputModal, setShowCodeInputModal] = useState(false);
   const [typedCode, setTypedCode] = useState('');
+  const [examToDelete, setExamToDelete] = useState<Exam | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteToast, setDeleteToast] = useState('');
 
   const navigateTo = (tab: string) => {
     if (onNavigateTab) {
@@ -376,71 +386,118 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {exams.map((exam) => (
-            <div
-              key={exam.id}
-              className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-800">
-                    {exam.subject} • {exam.grade}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                    Mã: {exam.accessCode}
-                  </span>
-                </div>
-
-                <h4 className="font-bold text-slate-900 text-base leading-snug">
-                  {exam.title}
-                </h4>
-
-                <p className="text-xs text-slate-500 line-clamp-2">
-                  {exam.description || 'Đề kiểm tra trắc nghiệm đánh giá năng lực học sinh.'}
-                </p>
-
-                <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
-                  <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold border border-blue-200">
-                    {exam.questions.filter(q => (q.type || 'multiple_choice') === 'multiple_choice').length} TN ({exam.multipleChoicePoints ?? 7}đ)
-                  </span>
-                  {exam.questions.some(q => q.type === 'essay') && (
-                    <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
-                      {exam.questions.filter(q => q.type === 'essay').length} TL ({exam.essayPoints ?? 3}đ)
-                    </span>
-                  )}
-                  <span className="text-slate-400 font-semibold">•</span>
-                  <span className="font-bold text-slate-700">{exam.durationMinutes} phút</span>
-                  <span className="text-slate-400 font-semibold">•</span>
-                  <span className="font-bold text-amber-700">{exam.totalPoints}đ</span>
-                  {exam.settings.antiCheatProctoring && (
-                    <>
-                      <span className="text-slate-400 font-semibold">•</span>
-                      <span className="text-amber-700 font-medium flex items-center gap-1">
-                        <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
-                        Giám sát tab
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-400 truncate">
-                  Tạo bởi: {exam.teacherName}
-                </span>
-
-                <button
-                  onClick={() => handleOpenExamId(exam.id)}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 shrink-0"
-                >
-                  <GraduationCap className="w-3.5 h-3.5" />
-                  Vào làm bài
-                </button>
-              </div>
+        {exams.length === 0 ? (
+          <div className="text-center py-12 px-4 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+              <FileCheck2 className="w-6 h-6" />
             </div>
-          ))}
-        </div>
+            <h4 className="font-bold text-slate-800 text-base">Chưa có đề thi nào trong hệ thống</h4>
+            <p className="text-slate-500 text-xs max-w-md mx-auto">
+              Thầy cô đã xóa hết đề thi cũ hoặc chưa tạo đề mới. Hãy tải lên file Word/PDF để tạo đề thi mới ngay!
+            </p>
+            {currentUser?.role === 'teacher' && (
+              <button
+                type="button"
+                onClick={() => navigateTo('create_exam')}
+                className="mt-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tạo đề thi mới ngay</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {exams.map((exam) => (
+              <div
+                key={exam.id}
+                className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-800">
+                      {exam.subject} • {exam.grade}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                        Mã: {exam.accessCode}
+                      </span>
+                      {currentUser?.role === 'teacher' && onDeleteExam && (
+                        <button
+                          type="button"
+                          onClick={() => setExamToDelete(exam)}
+                          className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Xóa đề thi này"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <h4 className="font-bold text-slate-900 text-base leading-snug">
+                    {exam.title}
+                  </h4>
+
+                  <p className="text-xs text-slate-500 line-clamp-2">
+                    {exam.description || 'Đề kiểm tra trắc nghiệm đánh giá năng lực học sinh.'}
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
+                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                      {exam.questions.filter(q => (q.type || 'multiple_choice') === 'multiple_choice').length} TN ({exam.multipleChoicePoints ?? 7}đ)
+                    </span>
+                    {exam.questions.some(q => q.type === 'essay') && (
+                      <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
+                        {exam.questions.filter(q => q.type === 'essay').length} TL ({exam.essayPoints ?? 3}đ)
+                      </span>
+                    )}
+                    <span className="text-slate-400 font-semibold">•</span>
+                    <span className="font-bold text-slate-700">{exam.durationMinutes} phút</span>
+                    <span className="text-slate-400 font-semibold">•</span>
+                    <span className="font-bold text-amber-700">{exam.totalPoints}đ</span>
+                    {exam.settings.antiCheatProctoring && (
+                      <>
+                        <span className="text-slate-400 font-semibold">•</span>
+                        <span className="text-amber-700 font-medium flex items-center gap-1">
+                          <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                          Giám sát tab
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                  <span className="text-xs text-slate-400 truncate">
+                    Tạo bởi: {exam.teacherName}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    {currentUser?.role === 'teacher' && onDeleteExam && (
+                      <button
+                        type="button"
+                        onClick={() => setExamToDelete(exam)}
+                        className="px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Xóa đề thi"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Xóa</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleOpenExamId(exam.id)}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 shrink-0"
+                    >
+                      <GraduationCap className="w-3.5 h-3.5" />
+                      Vào làm bài
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* QUICK EXPLORE GVDM INNOVATIVE FEATURES */}
@@ -544,20 +601,94 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowCodeInputModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50"
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={!typedCode.trim()}
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-40"
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-40 cursor-pointer"
                 >
                   Vào thi ngay
                 </button>
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* MODAL: XÁC NHẬN XÓA ĐỀ THI DÀNH CHO GIÁO VIÊN */}
+      {examToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-slate-900">
+                  Xác nhận xóa vĩnh viễn đề thi
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Thao tác này sẽ xóa đề thi và dữ liệu bài làm của học sinh trên cả máy và Firebase Cloud Firestore.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+              <div className="font-bold text-slate-800">
+                {examToDelete.title}
+              </div>
+              <div className="text-slate-500 flex gap-2">
+                <span>Môn: <strong>{examToDelete.subject}</strong></span>
+                <span>•</span>
+                <span>Mã phòng: <strong className="font-mono text-blue-700">{examToDelete.accessCode}</strong></span>
+              </div>
+            </div>
+
+            <p className="text-xs text-rose-600 font-semibold bg-rose-50 p-2.5 rounded-lg border border-rose-200">
+              ⚠️ Lưu ý: Đề thi sẽ bị gỡ bỏ vĩnh viễn, không thể khôi phục và không tự động tạo lại khi tải lại trang!
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setExamToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (onDeleteExam && examToDelete) {
+                    setIsDeleting(true);
+                    const title = examToDelete.title;
+                    await onDeleteExam(examToDelete.id);
+                    setIsDeleting(false);
+                    setExamToDelete(null);
+                    setDeleteToast(`Đã xóa vĩnh viễn đề thi "${title}" thành công!`);
+                    setTimeout(() => setDeleteToast(''), 4000);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Đang xóa...' : 'Xác nhận xóa vĩnh viễn'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {deleteToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-bold border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{deleteToast}</span>
         </div>
       )}
     </div>

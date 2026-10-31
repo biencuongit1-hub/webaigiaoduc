@@ -191,6 +191,23 @@ export async function getSubmissionsFromFirestore(examId?: string): Promise<Exam
   }
 }
 
+export async function deleteSubmissionsForExamFromFirestore(examId: string): Promise<void> {
+  const path = 'submissions';
+  try {
+    const snapshot = await getDocs(collection(db, path));
+    const toDelete: Promise<void>[] = [];
+    snapshot.forEach((d) => {
+      const data = d.data() as ExamSubmission;
+      if (data.examId === examId) {
+        toDelete.push(deleteDoc(doc(db, 'submissions', d.id)));
+      }
+    });
+    await Promise.all(toDelete);
+  } catch (error) {
+    console.warn('[Firebase] Lỗi xóa submissions theo examId:', error);
+  }
+}
+
 // Real-time listener for Exams
 export function subscribeToExams(callback: (exams: Exam[]) => void): () => void {
   const path = 'exams';

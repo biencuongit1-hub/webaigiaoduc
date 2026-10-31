@@ -3,6 +3,7 @@ import { EXAM_SAMPLE_PRESETS, parseRawExamText } from '../utils/parser';
 import { 
   saveExamToFirestore, 
   deleteExamFromFirestore, 
+  deleteSubmissionsForExamFromFirestore,
   saveSubmissionToFirestore, 
   getExamsFromFirestore, 
   getSubmissionsFromFirestore,
@@ -464,7 +465,7 @@ export const StorageService = {
     const remainingExams = this.getExams().filter((e) => e.id !== id);
     localStorage.setItem(EXAMS_STORAGE_KEY, JSON.stringify(remainingExams));
 
-    // Also remove related submissions to avoid orphan data
+    // Also remove related submissions locally to avoid orphan data
     try {
       const remainingSubs = this.getSubmissions().filter((s) => s.examId !== id);
       localStorage.setItem(SUBMISSIONS_STORAGE_KEY, JSON.stringify(remainingSubs));
@@ -472,10 +473,13 @@ export const StorageService = {
       // Ignore
     }
 
-    // Permanently remove from Firestore
+    // Permanently remove exam & related submissions from Firestore
     try {
-      await deleteExamFromFirestore(id);
-      console.log(`[Firebase] Đã xóa vĩnh viễn đề thi "${id}" khỏi Firestore.`);
+      await Promise.all([
+        deleteExamFromFirestore(id),
+        deleteSubmissionsForExamFromFirestore(id)
+      ]);
+      console.log(`[Firebase] Đã xóa vĩnh viễn đề thi "${id}" và bài làm liên quan khỏi Firestore.`);
     } catch (err) {
       console.warn('[Firebase] Lỗi xóa đề từ Firestore:', err);
     }

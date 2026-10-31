@@ -69,8 +69,9 @@ export default function App() {
         }
       });
       unsubSubs = subscribeToSubmissions(undefined, (cloudSubs) => {
-        if (cloudSubs && cloudSubs.length > 0) {
-          setSubmissions(cloudSubs);
+        if (cloudSubs) {
+          const deleted = StorageService.getDeletedExamIds();
+          setSubmissions(cloudSubs.filter(s => !deleted.has(s.examId)));
         }
       });
       unsubUsers = subscribeToUserProfiles((cloudUsers) => {
@@ -254,10 +255,9 @@ export default function App() {
 
   // Handler: Delete exam
   const handleDeleteExam = async (id: string) => {
-    if (confirm('Bạn có chắc chắn muốn xóa đề thi này không? Dữ liệu bài làm liên quan cũng sẽ bị gỡ bỏ.')) {
-      await StorageService.deleteExam(id);
-      setExams(StorageService.getExams());
-    }
+    await StorageService.deleteExam(id);
+    setExams(StorageService.getExams());
+    setSubmissions(StorageService.getSubmissions());
   };
 
   // Handler: Complete student submission
@@ -419,9 +419,11 @@ export default function App() {
           {currentUser.role === 'teacher' && userRole === 'teacher' && currentTab === 'home' && (
             <HomeOverview
               exams={exams}
+              currentUser={currentUser}
               onNavigateTab={setCurrentTab}
               onJoinExamCode={handleJoinExamByCode}
               onSelectExam={handleSelectExamForStudent}
+              onDeleteExam={handleDeleteExam}
             />
           )}
 

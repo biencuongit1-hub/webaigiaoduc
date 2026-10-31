@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileSpreadsheet, 
   Trash2, 
@@ -18,6 +18,7 @@ import {
   PenTool,
   CheckSquare,
   AlertCircle,
+  AlertTriangle,
   Save,
   Award,
   Sparkles,
@@ -63,6 +64,23 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
   const [isAutoGradingBatch, setIsAutoGradingBatch] = useState(false);
   const [isAutoGradingSingle, setIsAutoGradingSingle] = useState(false);
   const [autoGradeToast, setAutoGradeToast] = useState('');
+
+  // Delete modal state
+  const [examToDelete, setExamToDelete] = useState<Exam | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteSuccessToast, setDeleteSuccessToast] = useState('');
+
+  // Keep selectedExamId in sync with available exams
+  useEffect(() => {
+    if (exams.length > 0) {
+      const exists = exams.some(e => e.id === selectedExamId);
+      if (!exists) {
+        setSelectedExamId(exams[0].id);
+      }
+    } else {
+      setSelectedExamId('');
+    }
+  }, [exams, selectedExamId]);
 
   // Current active exam
   const currentExam = exams.find((e) => e.id === selectedExamId) || exams[0];
@@ -174,12 +192,6 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
     }
 
     const unGraded = examSubmissions.filter(s => s.gradingStatus === 'pending_review' || !s.essayScores);
-    if (unGraded.length === 0) {
-      if (!confirm('Tất cả bài thi đã được chấm điểm. Bạn có muốn để AI đối chiếu và chấm lại toàn bộ phần tự luận cho cả lớp không?')) {
-        return;
-      }
-    }
-
     const targetSubs = unGraded.length > 0 ? unGraded : examSubmissions;
     setIsAutoGradingBatch(true);
     let count = 0;
@@ -328,8 +340,32 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
         </button>
       </div>
 
-      {/* TAB 1: GRADEBOOK & ESSAY GRADING */}
-      {activeTab === 'gradebook' && (
+      {exams.length === 0 ? (
+        <div className="bg-white rounded-3xl border-2 border-dashed border-slate-200 p-12 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <FileText className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-xl font-bold text-slate-900">
+              Hiện chưa có đề thi nào trong kho lưu trữ
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Thầy cô đã xóa toàn bộ đề thi cũ hoặc chưa tạo đề mới. Các đề thi đã xóa sẽ được loại bỏ vĩnh viễn và không tự động tạo lại.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCreateNew}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 inline-flex items-center gap-2 cursor-pointer transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Tải file Word/PDF tạo đề thi mới</span>
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* TAB 1: GRADEBOOK & ESSAY GRADING */}
+          {activeTab === 'gradebook' && (
         <div className="space-y-6">
           {/* Exam Selector Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
@@ -394,11 +430,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                   {/* Delete Exam Button */}
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đề thi "${currentExam.title}" không? Dữ liệu bài thi của học sinh cũng sẽ được xóa sạch.`)) {
-                        onDeleteExam(currentExam.id);
-                      }
-                    }}
+                    onClick={() => setExamToDelete(currentExam)}
                     className="px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                     title="Xóa vĩnh viễn đề thi này"
                   >
@@ -679,8 +711,8 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                     </span>
                     <button
                       type="button"
-                      onClick={() => onDeleteExam(ex.id)}
-                      className="text-slate-400 hover:text-rose-600 p-1"
+                      onClick={() => setExamToDelete(ex)}
+                      className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition-colors"
                       title="Xóa đề thi"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -722,7 +754,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                       setSelectedExamId(ex.id);
                       setActiveTab('gradebook');
                     }}
-                    className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors flex items-center justify-center gap-1"
+                    className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     <span>Xem điểm</span>
@@ -731,7 +763,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                   <button
                     type="button"
                     onClick={() => setSharingExam(ex)}
-                    className="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs"
+                    className="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs cursor-pointer"
                     title="Chia sẻ link"
                   >
                     <Share2 className="w-3.5 h-3.5" />
@@ -749,11 +781,7 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
                   {/* Delete Exam Button on Card */}
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đề thi "${ex.title}" không? Dữ liệu bài thi của học sinh cũng sẽ bị xóa bỏ.`)) {
-                        onDeleteExam(ex.id);
-                      }
-                    }}
+                    onClick={() => setExamToDelete(ex)}
                     className="px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
                     title="Xóa vĩnh viễn đề thi này"
                   >
@@ -766,6 +794,8 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
           })}
         </div>
       )}
+    </>
+  )}
 
       {/* MODAL: TEACHER ESSAY GRADING & DETAILED INSPECTION */}
       {inspectingSub && currentExam && (
@@ -1131,11 +1161,90 @@ export const ExamManagement: React.FC<ExamManagementProps> = ({
             <button
               type="button"
               onClick={() => setSharingExam(null)}
-              className="w-full py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100"
+              className="w-full py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer"
             >
               Đóng
             </button>
           </div>
+        </div>
+      )}
+
+      {/* MODAL: XÁC NHẬN XÓA ĐỀ THI DÀNH CHO GIÁO VIÊN */}
+      {examToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-slate-900">
+                  Xác nhận xóa vĩnh viễn đề thi
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Thao tác này sẽ xóa đề thi và dữ liệu bài làm của học sinh trên cả máy và Firebase Cloud Firestore.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+              <div className="font-bold text-slate-800">
+                {examToDelete.title}
+              </div>
+              <div className="text-slate-500 flex gap-2">
+                <span>Môn: <strong>{examToDelete.subject}</strong></span>
+                <span>•</span>
+                <span>Mã phòng: <strong className="font-mono text-blue-700">{examToDelete.accessCode}</strong></span>
+              </div>
+            </div>
+
+            <p className="text-xs text-rose-600 font-semibold bg-rose-50 p-2.5 rounded-lg border border-rose-200">
+              ⚠️ Lưu ý: Đề thi sẽ bị gỡ bỏ vĩnh viễn, không thể khôi phục và không tự động tạo lại khi tải lại trang!
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setExamToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (examToDelete) {
+                    setIsDeleting(true);
+                    const title = examToDelete.title;
+                    const id = examToDelete.id;
+                    await onDeleteExam(id);
+                    const remaining = exams.filter(e => e.id !== id);
+                    if (selectedExamId === id) {
+                      setSelectedExamId(remaining[0]?.id || '');
+                    }
+                    setIsDeleting(false);
+                    setExamToDelete(null);
+                    setDeleteSuccessToast(`Đã xóa vĩnh viễn đề thi "${title}" thành công!`);
+                    setTimeout(() => setDeleteSuccessToast(''), 4000);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Đang xóa...' : 'Xác nhận xóa vĩnh viễn'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {deleteSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-bold border border-slate-700 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{deleteSuccessToast}</span>
         </div>
       )}
     </div>
